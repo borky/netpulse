@@ -32,7 +32,9 @@ type unifiInput struct {
 	// Password empty on an edit = keep the stored one.
 	Password string `json:"password"`
 	Site     string `json:"site"`
-	Insecure bool   `json:"insecure"`
+	// Insecure is a pointer so "absent" differs from "false": a partial save
+	// must not silently turn certificate checking back on.
+	Insecure *bool `json:"insecure"`
 }
 
 // PUT /api/config/unifi — save the controller. Validates what it can before
@@ -67,7 +69,10 @@ func (s *server) handlePutUniFiConfig(w http.ResponseWriter, r *http.Request) {
 		Username: in.Username,
 		Password: in.Password, // empty keeps the stored one (SaveConfig)
 		Site:     in.Site,
-		Insecure: in.Insecure,
+		Insecure: stored.Insecure,
+	}
+	if in.Insecure != nil {
+		cfg.Insecure = *in.Insecure
 	}
 	if err := unifi.SaveConfig(s.db.DB, cfg); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error")
@@ -105,6 +110,12 @@ func (s *server) handleTestUniFiConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(in.Site) != "" {
 		cfg.Site = strings.TrimSpace(in.Site)
+	}
+	// Without this the test would verify the certificate of a controller the
+	// saved config is explicitly allowed to skip, and fail where the poller
+	// will succeed.
+	if in.Insecure != nil {
+		cfg.Insecure = *in.Insecure
 	}
 	if !cfg.Enabled() {
 		writeError(w, http.StatusBadRequest, "invalid_input", "falta url, username o password")
