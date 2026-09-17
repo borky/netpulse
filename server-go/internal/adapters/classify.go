@@ -106,8 +106,8 @@ func GuessDeviceType(hostname, manufacturer, dhcpVendorClass, dhcpClientID, lldp
 		}
 	}
 	// Fabricante como refuerzo cuando el hostname no dice nada (OUI DB).
-	// Cámaras primero: un fabricante de videovigilancia es más específico
-	// que "iot", y hay un tipo propio para ello.
+	// Cameras first: a surveillance manufacturer is more specific than
+	// "iot", and there is a type of its own for it.
 	if oui.IsCameraVendor(m) {
 		return "camara"
 	}
