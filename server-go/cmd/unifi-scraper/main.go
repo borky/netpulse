@@ -330,6 +330,11 @@ func buildPayload(cfg *Config, d unifiDevice, stas []unifiSTA) probe.Payload {
 	p.Data.System = &probe.SystemData{
 		SysInfo: &probe.SysInfo{Uptime: d.Uptime},
 		Board:   board,
+		// The device's own MAC, so the server knows this router by it: the
+		// LLDP neighbour the gateway sees resolves to this entry instead of
+		// a second node, and the switch stops showing up as a client of
+		// itself.
+		BridgeMAC: strings.ToUpper(d.MAC),
 	}
 
 	switch d.Type {
@@ -532,10 +537,12 @@ func round(cfg *Config, st *state) error {
 			continue
 		}
 		p := buildPayload(cfg, d, stas)
+		// Deliberately "external" and not "managed-switch": the topology
+		// draws a managed-switch neighbour as a distribution node ON TOP of
+		// its device entry (#252), which is right for a switch nobody polls
+		// but duplicates one that pushes its own ports and clients, as this
+		// one does.
 		routerType := "external"
-		if d.Type == "usw" {
-			routerType = "managed-switch"
-		}
 		if err := np.ensureRouter(p.Router, d.IP, routerType); err != nil {
 			log.Printf("router entry %s: %v", p.Router, err)
 			failed++
