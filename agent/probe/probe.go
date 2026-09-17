@@ -35,8 +35,16 @@ const (
 	// Último recurso (#1500): hwmon para equipos SIN thermal zones (Synology
 	// DSM: k10temp en /sys/class/hwmon, cero zones). Con zones presentes
 	// mandan las zones: una sola fuente por equipo (#1484).
-	CmdTemp   = `o=""; for w in x86_pkg_temp cpu-thermal cpu_thermal soc-thermal; do for d in /sys/class/thermal/thermal_zone*; do [ "$(cat "$d/type" 2>/dev/null)" = "$w" ] && o=$(cat "$d/temp" 2>/dev/null) && break 2; done; done; [ -n "$o" ] || for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] && o=$(cat "$f") && break; done; [ -n "$o" ] || for h in /sys/class/hwmon/hwmon*; do case "$(cat "$h/name" 2>/dev/null)" in k10temp|coretemp|k8temp|cpu_thermal|soc_thermal) [ -r "$h/temp1_input" ] && o=$(cat "$h/temp1_input") && break;; esac; done; printf '%s\n' "$o"`
-	CmdNetDev = "cat /proc/net/dev | tail -n +3"
+	CmdTemp = `o=""; for w in x86_pkg_temp cpu-thermal cpu_thermal soc-thermal; do for d in /sys/class/thermal/thermal_zone*; do [ "$(cat "$d/type" 2>/dev/null)" = "$w" ] && o=$(cat "$d/temp" 2>/dev/null) && break 2; done; done; [ -n "$o" ] || for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] && o=$(cat "$f") && break; done; [ -n "$o" ] || for h in /sys/class/hwmon/hwmon*; do case "$(cat "$h/name" 2>/dev/null)" in k10temp|coretemp|k8temp|cpu_thermal|soc_thermal) [ -r "$h/temp1_input" ] && o=$(cat "$h/temp1_input") && break;; esac; done; printf '%s\n' "$o"`
+	// CmdTempHwmon: the last fallback, when CmdTemp finds neither a thermal
+	// zone nor one of the CPU chips it knows (the ipq40xx builds expose no
+	// zone, and their only hwmon sensor is the radio's). Prints "<millidegrees> <chip>" for the
+	// first hwmon sensor that answers. On an ath10k board that chip is the
+	// WiFi radio, NOT the SoC — hence the chip name travels with the value,
+	// so nothing downstream can pass it off as a CPU temperature. Radios
+	// only answer while they are up, so unreadable sensors are skipped.
+	CmdTempHwmon = `for f in /sys/class/hwmon/hwmon*/temp*_input; do v=$(cat "$f" 2>/dev/null) || continue; [ -n "$v" ] && echo "$v $(cat "$(dirname "$f")/name" 2>/dev/null)" && break; done`
+	CmdNetDev    = "cat /proc/net/dev | tail -n +3"
 	// CmdPingWan: latencia + pérdida a internet (solo gateway). %s = target.
 	CmdPingWan = "ping -c 3 -W 2 %s 2>/dev/null | tail -2"
 	// CmdPingGateway: ping corto al gateway desde un AP. %s = host gateway.
@@ -505,6 +513,25 @@ func CPUPercent(prev, cur CPUSample) *int {
 }
 
 // ParseTempC: °C del primer thermal zone (nil si la salida no es un entero).
+// ParseTempHwmon parses CmdTempHwmon's "<millidegrees> <chip>" into degrees
+// and the chip that measured them ("ath10k_hwmon" and friends). Returns nil
+// when no sensor answered.
+func ParseTempHwmon(out string) (*int, string) {
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) == 0 {
+		return nil, ""
+	}
+	temp := ParseTempC(fields[0])
+	if temp == nil {
+		return nil, ""
+	}
+	chip := ""
+	if len(fields) > 1 {
+		chip = fields[1]
+	}
+	return temp, chip
+}
+
 func ParseTempC(out string) *int {
 	milli, err := strconv.Atoi(strings.TrimSpace(out))
 	if err != nil {

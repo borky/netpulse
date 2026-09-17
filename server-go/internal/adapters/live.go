@@ -91,13 +91,14 @@ func pickGatewayCfg(polled map[string]*routerPolled) *RouterConfig {
 
 // routerPolled es el sondeo de un tick de un router.
 type routerPolled struct {
-	cfg     RouterConfig
-	client  *OpenWrtClient
-	sysInfo *SysInfo
-	board   *BoardInfo
-	cpu     int
-	ram     int
-	temp    int
+	cfg        RouterConfig
+	client     *OpenWrtClient
+	sysInfo    *SysInfo
+	board      *BoardInfo
+	cpu        int
+	ram        int
+	temp       int
+	tempSource string
 	// #1256: SNMP rellena sysDescr (nombre/modelo completo del switch) y,
 	// en MikroTik SwOS, la temperatura del chasis (hasTemp). hasTemp
 	// distingue "no aplica" de "0 °C" para no pisar el null de #441.
@@ -1529,7 +1530,7 @@ func (l *Live) buildRouter(p *routerPolled, history []histPoint) Router {
 	r := Router{
 		ID: p.cfg.ID, Name: name, Model: model, ModelShort: model,
 		IP: p.cfg.Host, Status: status, Health: health,
-		CPU: iptr(p.cpu), RAM: iptr(p.ram), Temp: iptr(p.temp),
+		CPU: iptr(p.cpu), RAM: iptr(p.ram), Temp: iptr(p.temp), TempSource: p.tempSource,
 		Uptime: fmtUptime(p.uptimeSec), Clients: len(p.leases),
 		Sparkline: sparkline, TempThreshold: thr,
 		LatencyMs: p.latencyMs,
