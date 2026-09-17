@@ -184,3 +184,14 @@ func TestApplyUniFiInfraLeavesContainersOnTheirHypervisor(t *testing.T) {
 		t.Fatalf("online: %+v", devices[0])
 	}
 }
+
+// A container the PVE seal could NOT place (host unidentified) still takes
+// the switch placement: there is no nesting to protect, and a port is
+// better than falling through to the gateway with no evidence at all.
+func TestApplyUniFiInfraPlacesAnOrphanContainer(t *testing.T) {
+	devices := []Device{{MAC: "02:00:00:00:00:01", Name: "storage", Infra: "ct"}}
+	applyUniFiInfra(devices, nil, testInventory(), "gateway")
+	if devices[0].AttachTo == "" || devices[0].Port != "lan5" {
+		t.Fatalf("an orphan container keeps the switch port: %+v", devices[0])
+	}
+}

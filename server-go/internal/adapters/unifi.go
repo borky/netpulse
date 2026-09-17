@@ -205,7 +205,12 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 		// switch port, but that port is where the HOST's cable goes: a
 		// guest has no cable of its own. Re-parenting it here undid the
 		// nesting and hung ten CTs straight off the switch.
-		if devices[i].Infra == "ct" {
+		//
+		// Only when the PVE seal actually placed it. A container whose host
+		// could not be identified has no parent to protect, and the switch
+		// port is then better than nothing -- without this it would fall
+		// through to the gateway as a wired device with no evidence.
+		if devices[i].Infra == "ct" && devices[i].AttachTo != "" {
 			continue
 		}
 		switch {
