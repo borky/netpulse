@@ -183,7 +183,8 @@ function signalTextClass(dbm: number | null): string {
 // de attachTo/lldp + los distributionNodes del provider.
 // ---------------------------------------------------------------------------
 
-type InfraKind = 'hypervisor' | 'ct' | 'vm' | 'managedSwitch'
+type InfraKind = 'hypervisor' | 'ct' | 'vm' | 'managedSwitch' | 'ap'
+
 interface InfraInfo {
   kind: InfraKind
   /** nombre del host (solo CT) */
@@ -195,6 +196,7 @@ const INFRA_BADGE_CLASS: Record<InfraKind, string> = {
   ct: 'border-border bg-elevated text-text-muted',
   vm: 'border-border bg-elevated text-text-muted',
   managedSwitch: 'border-accent/30 bg-accent-soft text-accent',
+  ap: 'border-accent/30 bg-accent-soft text-accent',
 }
 
 /** Badge de infraestructura con tooltip explicativo (D6). */
@@ -1285,6 +1287,8 @@ export default function Devices() {
         infra.set(d.id, { kind: 'vm', host: byId.get(d.attachTo ?? '')?.name ?? d.attachTo })
       } else if (sealed === 'ct' || (!sealed && d.attachTo && hosts.has(d.attachTo))) {
         infra.set(d.id, { kind: 'ct', host: byId.get(d.attachTo ?? '')?.name ?? d.attachTo })
+      } else if (sealed === 'ap') {
+        infra.set(d.id, { kind: 'ap' })
       } else if (sealed === 'managed-switch' || (!sealed && d.lldp)) {
         infra.set(d.id, { kind: 'managedSwitch' })
       }
