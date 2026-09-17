@@ -193,6 +193,12 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 		if !ok {
 			continue // the controller knows it, NetPulse has not seen it
 		}
+		// The controller lists a client because it is associated right now,
+		// which is firmer evidence of presence than the ARP entry the server
+		// would otherwise rely on. Without this a station on a UniFi AP stays
+		// offline — and the map only draws what is online, so the AP shows up
+		// with no clients around it.
+		devices[i].Online = true
 		switch {
 		case c.SwitchMAC != "":
 			id, ok := nodeIDByMac[c.SwitchMAC]
