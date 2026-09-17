@@ -132,3 +132,31 @@ func TestUniFiTestReportsUnreachable(t *testing.T) {
 		t.Fatalf("unreachable controller: %+v", out)
 	}
 }
+
+// A save that omits "insecure" must not turn certificate checking back on:
+// the next poll against a self-signed controller would start failing.
+func TestUniFiConfigKeepsInsecureOnPartialSave(t *testing.T) {
+	srv := makeTestServer(t)
+	_, cookie, _ := loginCookie(t, srv.URL, "admin", "test123456")
+
+	res := doReq(t, "PUT", srv.URL+"/api/config/unifi", cookie,
+		`{"url":"https://192.0.2.10:8443","username":"viewer","password":"s3cret","insecure":true}`)
+	res.Body.Close()
+	if got := unifiConfig(t, srv.URL, cookie); got["insecure"] != true {
+		t.Fatalf("insecure not stored: %+v", got)
+	}
+	// Edit something else, without resending insecure.
+	res = doReq(t, "PUT", srv.URL+"/api/config/unifi", cookie,
+		`{"url":"https://192.0.2.10:8443","username":"viewer","site":"home"}`)
+	res.Body.Close()
+	if got := unifiConfig(t, srv.URL, cookie); got["insecure"] != true {
+		t.Fatalf("a partial save reset insecure: %+v", got)
+	}
+	// Turning it off explicitly still works.
+	res = doReq(t, "PUT", srv.URL+"/api/config/unifi", cookie,
+		`{"url":"https://192.0.2.10:8443","username":"viewer","insecure":false}`)
+	res.Body.Close()
+	if got := unifiConfig(t, srv.URL, cookie); got["insecure"] != false {
+		t.Fatalf("explicit false ignored: %+v", got)
+	}
+}
