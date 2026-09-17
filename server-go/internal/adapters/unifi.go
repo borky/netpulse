@@ -200,6 +200,14 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 		// offline — and the map only draws what is online, so the AP shows up
 		// with no clients around it.
 		devices[i].Online = true
+		// A container's parent is its hypervisor, and the Proxmox inventory
+		// already said which one. The controller does see its MAC on a
+		// switch port, but that port is where the HOST's cable goes: a
+		// guest has no cable of its own. Re-parenting it here undid the
+		// nesting and hung ten CTs straight off the switch.
+		if devices[i].Infra == "ct" {
+			continue
+		}
 		switch {
 		case c.SwitchMAC != "":
 			id, ok := nodeIDByMac[c.SwitchMAC]
