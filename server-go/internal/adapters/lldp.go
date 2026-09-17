@@ -126,10 +126,10 @@ func lldpNeighborOnPort(neighbors []LldpNeighbor, port string) *LldpNeighbor {
 	return nil
 }
 
-// portNetdev: la interfaz de una boca. El id no siempre lo es -- una boca
-// WAN se llama "wan" aunque su interfaz sea "eth1" o "lan1" -- y tanto el
-// FDB como los vecinos LLDP vienen indexados por interfaz. Sin iface (boca
-// sin contadores) queda el id, que es lo que había antes.
+// portNetdev: a socket's interface. The id is not always it -- a WAN socket
+// is called "wan" even when its interface is "eth1" or "lan1" -- and both the
+// FDB and the LLDP neighbours are indexed by interface. With no iface (a
+// socket without counters) the id stands, which is the previous behaviour.
 func portNetdev(p EthPort) string {
 	if p.Iface != "" {
 		return p.Iface

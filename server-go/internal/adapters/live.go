@@ -883,9 +883,9 @@ func (l *Live) wanDayStats(gwID string) wanDayStatsResult {
 // y NO se toca SSH; si el agente expiró, se degrada a Tier 0 (SSH) con aviso.
 func (l *Live) pollRouter(ctx context.Context, cfg RouterConfig) (*routerPolled, error) {
 	if fresh, p := l.pollRouterAgent(cfg); fresh {
-		// Estado WAN del gateway (issue #276). Los agentes nuevos lo traen en
-		// el payload; para los viejos queda la sonda SSH (cache de 60 s), que
-		// no existe si el router es agent_only.
+		// Gateway WAN state (issue #276). New agents carry it in the payload;
+		// for older ones the SSH probe remains (60 s cache), which does not
+		// exist if the router is agent_only.
 		l.mu.Lock()
 		gw := l.gatewayCfg
 		client := l.clients[cfg.ID]
@@ -2911,11 +2911,12 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 			routerByMac[polled.brMac] = name
 		}
 	}
-	// Boca → MACs aprendidas (vecino inmediato). Indexado por INTERFAZ: el
-	// FDB y los vecinos LLDP vienen con el nombre de la interfaz, y el id de
-	// la boca no siempre lo es (una boca WAN se llama "wan" aunque su
-	// interfaz sea "eth1", o "lan1" cuando el uplink es un PPPoE sobre esa
-	// boca). Sin esto, esa boca sale sin el dispositivo que tiene enfrente.
+	// Socket → learned MACs (immediate neighbour). Indexed by INTERFACE: the
+	// FDB and the LLDP neighbours arrive keyed by interface name, and a
+	// socket's id is not always that name (a WAN socket is called "wan" even
+	// when its interface is "eth1", or "lan1" when the uplink is a PPPoE over
+	// that socket). Without this, such a socket shows nothing in front of
+	// it.
 	portMacs := map[string][]string{}
 	if p != nil {
 		for mac, portName := range p.fdb {

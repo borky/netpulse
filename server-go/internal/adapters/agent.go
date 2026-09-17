@@ -564,9 +564,9 @@ func (l *Live) polledFromAgent(cfg RouterConfig, p *probe.Payload) *routerPolled
 	if p.Data.Arp != nil {
 		out.arp = p.Data.Arp
 	}
-	// Wan (#276): el agente lo trae en el payload desde 2.28.24+. Antes solo
-	// existía la sonda SSH del server, que en un router agent_only no corre
-	// nunca -- y su panel de conexión se quedaba vacío.
+	// Wan (#276): the agent carries it in the payload since 2.28.24+. Before
+	// that the only source was the server's SSH probe, which never runs on an
+	// agent_only router -- leaving its connection panel empty.
 	if w := p.Data.Wan; w != nil {
 		out.wanInfo = *w
 	}

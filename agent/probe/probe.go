@@ -87,14 +87,14 @@ const (
 	// CmdRadioSections (#500): secciones wifi-device de UCI con su banda, para
 	// resolver "2.4 GHz" → radio0 (la relación iface→sección no sale de iwinfo).
 	CmdRadioSections = `uci -q show wireless 2>/dev/null | grep -E "=wifi-device$|\.band=|\.hwmode="`
-	// CmdPortStates: "<name> <operstate> <speed> <type> <conduit>" por interfaz.
-	// type es el ARPHRD del kernel (1 = ethernet), para no tomar por boca un
-	// uplink que no lo es (wwan0 de un módem celular). conduit es la interfaz
-	// inferior (lower_*) cuando la hay: en un switch DSA las bocas cuelgan de
-	// la interfaz de CPU (lan1/lan2 → lower_eth0), así que eth0 no es una boca
-	// física aunque el nombre lo parezca. "-" cuando no hay ninguna.
-	// Los campos 4 y 5 son añadidos: ParsePortStates sigue leyendo la forma de
-	// tres campos sin cambiar de comportamiento.
+	// CmdPortStates: "<name> <operstate> <speed> <type> <conduit>" per iface.
+	// type is the kernel's ARPHRD (1 = ethernet), so an uplink that is not a
+	// socket (wwan0 on a cellular modem) is not taken for one. conduit is the
+	// lower interface (lower_*) when there is one: on a DSA switch the sockets
+	// hang off the CPU interface (lan1/lan2 → lower_eth0), so eth0 is not a
+	// physical socket however much the name looks like one. "-" when there is
+	// none. Fields 4 and 5 are additions: ParsePortStates still reads the
+	// three-field form with unchanged behaviour.
 	CmdPortStates = `for d in /sys/class/net/*; do i=$(basename "$d"); ` +
 		`o=$(cat "$d/operstate" 2>/dev/null || echo unknown); ` +
 		`s=$(cat "$d/speed" 2>/dev/null || echo -1); ` +
@@ -130,9 +130,9 @@ const (
 	// CmdWanStatus: estado de la interfaz WAN (solo gateway) vía ubus.
 	// Da proto ("pppoe"), IP, gateway (ptpaddress/nexthop) y DNS (issue #276).
 	CmdWanStatus = "ubus call network.interface.wan status 2>/dev/null || true"
-	// CmdNetworkDump: estado de TODAS las interfaces, para elegir el uplink
-	// por la ruta por defecto en vez de por el nombre "wan" (ver pickUplink)
-	// y saber por qué boca sale internet.
+	// CmdNetworkDump: the state of EVERY interface, to pick the uplink by its
+	// default route instead of by the name "wan" (see pickUplink) and to know
+	// which socket internet leaves through.
 	CmdNetworkDump = "ubus call network.interface dump 2>/dev/null || true"
 	CmdBridgeVlan  = "bridge vlan show 2>/dev/null || true"
 
@@ -182,13 +182,13 @@ type BoardInfo struct {
 // los campos vacíos significan "sin datos WAN" (APs/desconocido).
 type WanInfo struct {
 	Proto   string   `json:"proto,omitempty"`   // "pppoe"|"dhcp"|"static"...
-	Device  string   `json:"device,omitempty"`  // interfaz L3 (p.ej. "pppoe-wan")
+	Device  string   `json:"device,omitempty"`  // L3 interface (e.g. "pppoe-wan")
 	IP      string   `json:"ip,omitempty"`      // dirección IPv4 pública
 	Gateway string   `json:"gateway,omitempty"` // puerta de enlace (nexthop/ptpaddress)
 	DNS     []string `json:"dns,omitempty"`     // servidores DNS
-	// Port es la interfaz por debajo del protocolo: la boca por la que sale
-	// internet ("lan1" para un PPPoE sobre esa boca, "eth1.20" con VLAN).
-	// Vacía cuando el uplink no pasa por ninguna (módem celular).
+	// Port is the interface underneath the protocol: the socket internet
+	// leaves through ("lan1" for a PPPoE over that socket, "eth1.20" with a
+	// VLAN). Empty when the uplink crosses no socket at all (a modem).
 	Port string `json:"port,omitempty"`
 }
 
@@ -221,16 +221,16 @@ type PortState struct {
 	Name  string `json:"name"`
 	Up    bool   `json:"up"`
 	Speed string `json:"speed"` // "1 Gbps" | "100 Mbps" | "—"
-	// Type es el ARPHRD de /sys/class/net/<i>/type: 1 = ethernet. 0 o
-	// negativo = desconocido (salida antigua de tres campos), y entonces no
-	// se descarta nada por el tipo.
+	// Type is the ARPHRD from /sys/class/net/<i>/type: 1 = ethernet. 0 or
+	// negative = unknown (the old three-field output), and then nothing is
+	// discarded on account of the type.
 	Type int `json:"type,omitempty"`
-	// Conduit es la interfaz inferior (lower_*), vacío si no hay. En un
-	// switch DSA es el puerto de CPU del que cuelga la boca.
+	// Conduit is the lower interface (lower_*), empty when there is none. On
+	// a DSA switch it is the CPU port the socket hangs off.
 	Conduit string `json:"conduit,omitempty"`
 }
 
-// ARPHRDEther es el /sys/class/net/<i>/type de una interfaz ethernet.
+// ARPHRDEther is the /sys/class/net/<i>/type of an ethernet interface.
 const ARPHRDEther = 1
 
 // PortLayout es una boca del layout canónico (/etc/board.json).
@@ -503,14 +503,14 @@ func ParseDhcpUbus(raw []byte) ([]DhcpLease, error) {
 	return out, nil
 }
 
-// ifaceStatus es una interfaz de `ubus call network.interface[.<x>] status`,
-// y cada entrada de `... dump`.
+// ifaceStatus is one interface of `ubus call network.interface[.<x>] status`,
+// and each entry of `... dump`.
 type ifaceStatus struct {
 	Interface string `json:"interface"`
 	Up        bool   `json:"up"`
 	Proto     string `json:"proto"`
 	L3Device  string `json:"l3_device"`
-	// Device es la interfaz de debajo: para un PPPoE, la boca física.
+	// Device is the interface underneath: for a PPPoE, the physical socket.
 	Device string `json:"device"`
 	IPV4   []struct {
 		Address    string `json:"address"`
@@ -533,13 +533,12 @@ func (s ifaceStatus) defaultNexthop() string {
 	return ""
 }
 
-// pickUplink elige la interfaz que lleva internet. No vale fiarse del nombre
-// "wan": en un router multi-WAN el uplink vivo puede llamarse de cualquier
-// forma (un PPPoE llamado "isp" junto a un módem celular que sí se llama
-// "wan" y que además reporta up=true estando ocioso), así que manda la ruta
-// por defecto. Sin ninguna con ruta, cae a la llamada "wan" para que un
-// router normal con el enlace caído siga saliendo como WAN caída y no como
-// router sin WAN.
+// pickUplink picks the interface that carries internet. The name "wan" is no
+// signal: on a multi-WAN router the live uplink can be called anything (a
+// PPPoE named "isp" next to a cellular modem that IS named "wan" and reports
+// up=true while idle), so the default route decides. With no routed interface
+// at all it falls back to the one named "wan", so a normal router with its
+// link down still reads as WAN-down rather than as a router with no WAN.
 func pickUplink(ifaces []ifaceStatus) (ifaceStatus, bool) {
 	for _, i := range ifaces {
 		if i.Up && i.defaultNexthop() != "" {
@@ -562,18 +561,18 @@ func wanInfoFrom(s ifaceStatus) WanInfo {
 			info.Gateway = s.IPV4[0].PtpAddress
 		}
 	}
-	// El gateway real es el nexthop de la ruta por defecto (0.0.0.0/0).
+	// The real gateway is the nexthop of the default route (0.0.0.0/0).
 	if nh := s.defaultNexthop(); nh != "" {
 		info.Gateway = nh
 	}
 	return info
 }
 
-// ParseWanStatus parsea el estado de la WAN (issue #276). Acepta las dos
-// formas: `ubus call network.interface dump` (y entonces elige el uplink
-// activo, ver pickUplink) y el status de una sola interfaz. Extrae proto,
-// interfaz L3, boca física, IP pública, gateway y DNS; campos vacíos si el
-// JSON no trae datos utilizables.
+// ParseWanStatus parses the WAN state (issue #276). It accepts both shapes:
+// `ubus call network.interface dump` (and then picks the active uplink, see
+// pickUplink) and a single interface's status. Extracts proto, L3 interface,
+// physical socket, public IP, gateway and DNS; empty fields when the JSON
+// carries nothing usable.
 func ParseWanStatus(raw []byte) WanInfo {
 	var dump struct {
 		Interface []ifaceStatus `json:"interface"`
@@ -723,9 +722,9 @@ func ParseWirelessUplink(raw []byte) (bool, error) {
 // Puertos
 // ---------------------------------------------------------------------------
 
-// ParsePortStates parsea líneas "<name> <operstate> <speed> [type] [conduit]".
-// Los dos últimos campos son opcionales: sin ellos el tipo queda desconocido
-// y no se descarta ninguna boca por él.
+// ParsePortStates parses lines "<name> <operstate> <speed> [type] [conduit]".
+// The last two fields are optional: without them the type stays unknown and
+// no socket is discarded on account of it.
 func ParsePortStates(out string) []PortState {
 	ports := []PortState{}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
@@ -783,20 +782,20 @@ func ParsePortLayout(out string) ([]PortLayout, error) {
 	return ports, nil
 }
 
-// phyRe/skipRe: nombres que pueden ser una boca física y nombres que nunca lo
-// son (bridges, VLANs, túneles, wireless, módems).
+// phyRe/skipRe: names that can be a physical socket, and names that never
+// are (bridges, VLANs, tunnels, wireless, modems).
 var (
 	phyRe  = regexp.MustCompile(`^(eth|sfp|en|swp)[0-9a-zA-Z_\-]*$|^(lan|wan)[0-9]+$`)
 	skipRe = regexp.MustCompile(`^(lo|br[-_]?|br-lan|br0|docker|veth|wg|tun|tap|ifb|pppoe|wlan|wpan|phy|gre|gretap|erspan|ip6tnl|sit|teql|bond|dummy|nat64|rmnet|usb|wwan)`)
 )
 
-// switchConduits: puertos de CPU de un switch, deducidos de las propias
-// bocas. En DSA cada boca cuelga de la interfaz de CPU (lan1 y lan2 tienen
-// lower_eth0), que no es una boca física por mucho que se llame eth0.
+// switchConduits: a switch's CPU ports, deduced from the sockets themselves.
+// Under DSA every socket hangs off the CPU interface (lan1 and lan2 both have
+// lower_eth0), which is not a physical socket however much it is called eth0.
 //
-// Solo se mira el lower_* de interfaces que parecen bocas: el de un bridge
-// son sus miembros (br-lan → lower_lan2) y el de una VLAN su interfaz padre,
-// relaciones que no señalan ningún puerto de CPU.
+// Only the lower_* of interfaces that look like sockets counts: a bridge's
+// lowers are its members (br-lan → lower_lan2) and a VLAN's is its parent,
+// relations that point at no CPU port.
 func switchConduits(states []PortState) map[string]bool {
 	conduits := map[string]bool{}
 	for _, st := range states {
@@ -808,12 +807,12 @@ func switchConduits(states []PortState) map[string]bool {
 	return conduits
 }
 
-// isEthNetdev: el layout nombra una interfaz de red ethernet de verdad.
-// board.json declara como WAN lo que el router use de uplink, y no siempre es
-// una boca: en un router celular es "/dev/cdc-wdm0",
-// que ni siquiera aparece en /sys/class/net. Un tipo desconocido (salida
-// antigua, sin el campo) cuenta como ethernet: mejor enseñar una boca de más
-// que esconder una real.
+// isEthNetdev: the layout names a real ethernet netdev. board.json declares
+// as WAN whatever the router uses as its uplink, and that is not always a
+// socket: on a cellular router it is "/dev/cdc-wdm0",
+// which does not even appear in /sys/class/net. An unknown type (the old
+// output, without the field) counts as ethernet: better to show one socket
+// too many than to hide a real one.
 func isEthNetdev(st PortState, ok bool) bool {
 	return ok && (st.Type <= 0 || st.Type == ARPHRDEther)
 }
@@ -824,14 +823,14 @@ func isEthNetdev(st PortState, ok bool) bool {
 // física (issue #305; nil = sin datos, las bocas salen sin stats). Literal de
 // openwrt.go GetEthPorts.
 //
-// Descarta dos bocas que no existen: el uplink del layout cuando no es una
-// interfaz ethernet (módem celular) y el puerto de CPU del switch. Sin ellos
-// un router así pasa de enseñar cuatro bocas -- WAN (nunca conectada), LAN 1,
-// LAN 2 y ETH 0 -- a las dos que tiene.
+// Discards two sockets that do not exist: the layout's uplink when it is not
+// an ethernet interface (a cellular modem) and the switch's CPU port. Without
+// them such a board goes from showing four sockets -- WAN (never connected),
+// LAN 1, LAN 2 and ETH 0 -- to the two it has.
 //
-// uplink es la boca por la que sale internet (WanInfo.Port); cuando ninguna
-// boca ha salido como WAN se promueve esa, ver promoteUplink. "" = sin dato,
-// y entonces no se promueve nada.
+// uplink is the socket internet leaves through (WanInfo.Port); when no socket
+// came out as WAN that one is promoted, see promoteUplink. "" = no data, and
+// then nothing is promoted.
 func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string]bool, ifaces map[string]IfRate, uplink string) []EthPort {
 	applyStats := func(ep *EthPort, iface string) {
 		st, ok := ifaces[iface]
@@ -851,9 +850,9 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 
 	used := map[string]bool{}
 	ports := make([]EthPort, 0, len(states))
-	// netdev de cada boca por id, para saber luego cuál lleva el uplink: el
-	// id no siempre es el nombre de la interfaz (en swconfig, "1" vs
-	// "eth0.1").
+	// The netdev behind each socket, keyed by id, to tell later which one
+	// carries the uplink: the id is not always the interface name (on
+	// swconfig, "1" vs "eth0.1").
 	netdev := map[string]string{}
 
 	if len(layout) > 0 {
@@ -937,7 +936,7 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 			continue
 		}
 		if conduits[st.Name] {
-			continue // puerto de CPU del switch, no una boca
+			continue // the switch's CPU port, not a socket
 		}
 		label := st.Name
 		if strings.HasPrefix(st.Name, "eth") {
@@ -963,25 +962,25 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 	return promoteUplink(ports, netdev, uplink)
 }
 
-// promoteUplink marca como WAN la boca por la que sale internet cuando
-// ninguna ha salido ya como tal. Hay routers cuyo uplink no entra por una
-// boca WAN dedicada: el PPPoE puede ir sobre una boca llamada "lan1" y el
-// board.json solo declara un módem como WAN, así que sin esto ninguna boca
-// sale con id "wan" -- y la UI marca el uplink y cuelga los datos de la
-// conexión (proto, IP pública, gateway, DNS) justo de esa.
+// promoteUplink marks the socket internet leaves through as WAN when none
+// came out as such already. Some routers take their uplink through no
+// dedicated WAN socket: the PPPoE can run over a socket named "lan1"
+// and board.json declares only a modem as WAN, so without this no socket gets
+// id "wan" -- and that is exactly where the UI marks the uplink and hangs the
+// connection details (proto, public IP, gateway, DNS).
 //
-// La boca conserva su sitio y su iface: las estadísticas y la MAC siguen
-// siendo las suyas, solo cambia cómo se presenta.
+// The socket keeps its place and its iface: the counters and the MAC stay
+// its own, only how it is presented changes.
 func promoteUplink(ports []EthPort, netdev map[string]string, uplink string) []EthPort {
 	if uplink == "" {
 		return ports
 	}
 	for _, p := range ports {
 		if p.ID == "wan" {
-			return ports // el layout ya trae una boca WAN
+			return ports // the layout already brings a WAN socket
 		}
 	}
-	// El uplink puede llegar etiquetado ("lan1.7"): la boca es la de debajo.
+	// The uplink can arrive tagged ("lan1.7"): the socket is the one below.
 	base := uplink
 	if i := strings.LastIndexByte(base, '.'); i > 0 {
 		base = base[:i]

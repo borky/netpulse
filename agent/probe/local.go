@@ -71,8 +71,8 @@ type Prober struct {
 	// para derivar la sección NetIf (contadores por iface, #305) sin un
 	// segundo cat.
 	lastNetRaw string
-	// lastWan: uplink del último Build, para que probeFDB marque la boca por
-	// la que sale internet sin repetir la llamada a ubus.
+	// lastWan: the uplink from the last Build, so probeFDB can mark the
+	// socket internet leaves through without calling ubus twice.
 	lastWan *WanInfo
 	// netIfUpdated indica si el último ciclo de probeSystem consiguió
 	// refrescar /proc/net/dev. Build solo incluye NetIf cuando es true,
@@ -168,7 +168,7 @@ func (p *Prober) Build(ctx context.Context, router, version string) *Payload {
 		Ts:      time.Now().Unix(),
 		Version: version,
 	}
-	// Wan antes que FDB: probeFDB usa la boca del uplink para marcarla.
+	// Wan before FDB: probeFDB uses the uplink socket to mark it.
 	pl.Data.Wan = p.probeWan(ctx)
 	pl.Data.System = p.probeSystem(ctx)
 	pl.Data.Wireless = p.probeWireless(ctx, true)
@@ -427,10 +427,10 @@ func (p *Prober) probeDHCP(ctx context.Context) *DHCPData {
 	return dd
 }
 
-// probeWan: estado del uplink (proto, IP pública, gateway, DNS y la boca por
-// la que sale), eligiendo la interfaz por su ruta por defecto y no por
-// llamarse "wan". nil cuando no hay nada utilizable: un AP sin uplink, o un
-// equipo sin ubus. Guarda el resultado para probeFDB.
+// probeWan: uplink state (proto, public IP, gateway, DNS and the socket it
+// leaves through), picking the interface by its default route rather than by
+// being named "wan". nil when there is nothing usable: an AP with no uplink,
+// or a box without ubus. Keeps the result for probeFDB.
 func (p *Prober) probeWan(ctx context.Context) *WanInfo {
 	p.lastWan = nil
 	out := p.runBest(ctx, CmdNetworkDump, 0)
@@ -480,8 +480,8 @@ func (p *Prober) probeFDB(ctx context.Context) *FDBData {
 				ifaces[name] = IfRate{IfCounters: c}
 			}
 		}
-		// Boca del uplink: la marca como WAN cuando el layout no trae
-		// ninguna (PPPoE sobre una boca "lan" y demás).
+		// Uplink socket: marks it as WAN when the layout brings none
+		// (PPPoE over a "lan" socket and the like).
 		uplink := ""
 		if p.lastWan != nil {
 			uplink = p.lastWan.Port

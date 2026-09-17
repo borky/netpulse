@@ -371,12 +371,12 @@ func (c *OpenWrtClient) GetDhcpLeases() []DhcpLease {
 	return parseDhcpLeasesFile(out)
 }
 
-// GetWanInfo: estado del uplink (issue #276). Via ubus network.interface
-// dump, que trae todas las interfaces y deja elegir la que lleva internet
-// por su ruta por defecto en vez de por llamarse "wan" (un PPPoE puede
-// llamarse de cualquier forma, y el nombre "wan" puede ser un módem ocioso).
-// Cae al status de la interfaz "wan" con los ubus antiguos; si el router no
-// tiene ninguna (AP), devuelve WanInfo vacío.
+// GetWanInfo: uplink state (issue #276). Via ubus network.interface dump,
+// which brings every interface and lets us pick the one carrying internet by
+// its default route instead of by being named "wan" (a PPPoE session can be
+// named anything, and the name "wan" may be an idle modem). Falls back to the
+// "wan" interface status on older ubus; if the router has none (AP), returns
+// an empty WanInfo.
 func (c *OpenWrtClient) GetWanInfo() probe.WanInfo {
 	if raw, err := c.UbusCall("network.interface", "dump", nil); err == nil {
 		if info := probe.ParseWanStatus(raw); info.Proto != "" || info.IP != "" || info.Gateway != "" {
