@@ -10,7 +10,7 @@ import { Sparkline } from '@/components/Sparkline'
 import { StatusPill } from '@/components/StatusPill'
 import { AgentBadge } from '@/components/routers/AgentBadge'
 import { useAgentFor } from '@/hooks/useAgentFor'
-import { fmtTemp, useTempUnit } from '@/lib/temperature'
+import { tempSourceTag, fmtTemp, useTempUnit } from '@/lib/temperature'
 import { cn } from '@/lib/utils'
 
 function MiniMetric({
@@ -98,7 +98,7 @@ export function RouterCard({ router, index = 0, className }: RouterCardProps) {
             <>
               <MiniMetric icon={Cpu} value={`${router.cpu} %`} label="CPU" hot={router.hotMetric === 'cpu'} />
               <MiniMetric icon={MemoryStick} value={`${router.ram} %`} label="RAM" hot={router.hotMetric === 'ram'} />
-              <MiniMetric icon={Thermometer} value={fmtTemp(router.temp, tempUnit)} label={t('common.temperature')} hot={router.hotMetric === 'temp'} />
+              <MiniMetric icon={Thermometer} value={fmtTemp(router.temp, tempUnit) + tempSourceTag(router.tempSource)} label={t('common.temperature')} hot={router.hotMetric === 'temp'} />
             </>
           )}
           <MiniMetric icon={Users} value={String(router.clients)} label={t('common.clients')} />
