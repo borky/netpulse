@@ -337,7 +337,9 @@
       "hypervisor": "Hipervisor",
       "hypervisorTip": "Host con CTs/VMs anidados tras su bridge virtual",
       "managedSwitch": "Switch gestionado",
-      "managedSwitchTip": "Switch identificado vía LLDP"
+      "managedSwitchTip": "Switch identificado vía LLDP",
+      "ap": "Punto de acceso",
+      "apTip": "Punto de acceso gestionado, reportado por su controlador"
     },
     "bandAll": "Todas",
     "changeView": "Cambiar vista",
@@ -1068,7 +1070,8 @@
       "managedSwitch": "Switch gestionado",
       "throughput": "Throughput del enlace",
       "title": "Enlaces entre equipos",
-      "wifiUplink": "WiFi uplink"
+      "wifiUplink": "WiFi uplink",
+      "managedAp": "Punto de acceso"
     },
     "mapAria": "Mapa de la red: Internet conectado al Gateway Flint 2, tres puntos de acceso (Salón, Estudio y Patio) con sus clientes, y dos túneles WireGuard activos.",
     "peerAria": "{{name}}, túnel WireGuard activo, {{ip}}",
@@ -1109,7 +1112,8 @@
       "noIp": "sin IP · no consultable directamente",
       "port": "Puerto de {{router}}",
       "macs": "MACs aprendidas",
-      "fdbNote": "FDB: {{count}} MACs heterogéneas en un solo puerto físico. Probablemente un switch; no podemos afirmarlo sin LLDP."
+      "fdbNote": "FDB: {{count}} MACs heterogéneas en un solo puerto físico. Probablemente un switch; no podemos afirmarlo sin LLDP.",
+      "ap": "Punto de acceso"
     },
     "host": {
       "hypervisor": "hipervisor",

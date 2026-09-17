@@ -10,7 +10,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { useNavigate } from 'react-router'
 import { animate, motion, useReducedMotion } from 'framer-motion'
-import { Cloud, Laptop, Router as RouterIcon, Server, Smartphone, Tag } from 'lucide-react'
+import { Cloud, Laptop, Router as RouterIcon, Server, Smartphone, Tag, Wifi } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { manufacturerLabel, relTime } from '@/i18n'
 import type { Device, DistributionNode, Router, WanInfo, WGPeer } from '@/data/mock'
@@ -277,9 +277,9 @@ function TooltipCard({
         <div>
           <div className="flex items-center justify-between gap-2">
             <span className="font-display text-sm font-semibold text-text-primary">
-              {tip.node.name ?? t('topology.dist.managed')}
+              {tip.node.name ?? t(tip.node.role === 'ap' ? 'topology.dist.ap' : 'topology.dist.managed')}
             </span>
-            <StatusPill tone="accent" label="LLDP" />
+            {distBadge(tip.node) !== '' && <StatusPill tone="accent" label={distBadge(tip.node)} />}
           </div>
           <div className="mt-0.5 text-caption text-text-muted">
             {[tip.node.ip, portName(tip.node.port, tip.node.portLabel)].filter(Boolean).join(' · ')}
@@ -1584,6 +1584,22 @@ function LabelText({
 // Nodo de distribución inferido (círculo dashed, sin IP)
 // ---------------------------------------------------------------------------
 
+/**
+ * Procedencia de una caja gestionada, para la pastilla del nodo y del
+ * tooltip: LLDP si el router la vio anunciarse, y si no el integrador que la
+ * reportó. Antes decía "LLDP" en todas, también en los AP que solo conoce el
+ * controlador UniFi. "" = sin procedencia conocida → sin pastilla.
+ */
+function distBadge(n: DistributionNode): string {
+  if (n.lldp) return 'LLDP'
+  return n.source ? n.source.toUpperCase() : ''
+}
+
+/** Ancho de la pastilla: crece con el texto ("LLDP", "UNIFI", "PROXMOX"). */
+function badgeWidth(label: string): number {
+  return Math.max(22, label.length * 4.6 + 8)
+}
+
 const DistNodeGroup = memo(function DistNodeGroup({
   dv,
   delay,
@@ -1608,8 +1624,13 @@ const DistNodeGroup = memo(function DistNodeGroup({
   onDragStart?: (e: ReactPointerEvent) => void
 }) {
   const { t } = useTranslation()
-  const SwitchIcon = DEVICE_ICONS.switch
   const managed = dv.node.kind === 'managed'
+  // Un AP gestionado es un nodo managed más (misma geometría), pero no se
+  // dibuja ni se nombra como un switch.
+  const isAp = dv.node.role === 'ap'
+  const NodeIcon = isAp ? Wifi : DEVICE_ICONS.switch
+  const nodeLabel = dv.node.name ?? t(isAp ? 'topology.dist.ap' : 'topology.dist.managed')
+  const badge = distBadge(dv.node)
   return (
     <motion.g
       transform={`translate(${dv.x} ${dv.y})`}
@@ -1619,7 +1640,7 @@ const DistNodeGroup = memo(function DistNodeGroup({
       data-node-id={dv.id}
       aria-label={
         managed
-          ? `${dv.node.name ?? t('topology.dist.managed')}, LLDP, ${dv.node.ip ?? ''} ${portName(dv.node.port, dv.node.portLabel)}`
+          ? `${nodeLabel}, ${badge}, ${dv.node.ip ?? ''} ${portName(dv.node.port, dv.node.portLabel)}`
           : `${t('topology.dist.title')}, ${t('topology.dist.inferred')}, ${portName(dv.node.port, dv.node.portLabel)}`
       }
       animate={{ opacity }}
@@ -1660,13 +1681,13 @@ const DistNodeGroup = memo(function DistNodeGroup({
           strokeWidth={1.5}
           strokeDasharray={managed ? undefined : '4 4'}
         />
-        <SwitchIcon x={-10} y={-10} width={20} height={20} className={managed ? 'text-accent' : 'text-text-secondary'} strokeWidth={1.75} aria-hidden />
-        {/* badge LLDP (misma geometría que el badge de los chips) */}
-        {managed && (
+        <NodeIcon x={-10} y={-10} width={20} height={20} className={managed ? 'text-accent' : 'text-text-secondary'} strokeWidth={1.75} aria-hidden />
+        {/* badge de procedencia (misma geometría que el badge de los chips) */}
+        {managed && badge !== '' && (
           <g aria-hidden>
-            <rect x={dv.r - 4} y={-dv.r - 4} width={22} height={10} rx={5} fill="rgb(var(--elevated))" stroke={COLOR.accent} strokeWidth={1} />
-            <text x={dv.r + 7} y={-dv.r + 3.4} textAnchor="middle" fontSize={6.5} fontWeight={800} fill={COLOR.accent} letterSpacing="0.04em">
-              LLDP
+            <rect x={dv.r - 4} y={-dv.r - 4} width={badgeWidth(badge)} height={10} rx={5} fill="rgb(var(--elevated))" stroke={COLOR.accent} strokeWidth={1} />
+            <text x={dv.r - 4 + badgeWidth(badge) / 2} y={-dv.r + 3.4} textAnchor="middle" fontSize={6.5} fontWeight={800} fill={COLOR.accent} letterSpacing="0.04em">
+              {badge}
             </text>
           </g>
         )}

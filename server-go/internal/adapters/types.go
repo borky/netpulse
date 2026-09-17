@@ -265,8 +265,9 @@ type Device struct {
 	// Infra: rol de infraestructura sellado server-side (Fase 4). La app NO
 	// infiere: pinta badge si viene. "hypervisor" (host Proxmox/VMware/…),
 	// "ct" (CT/VM anidado bajo hipervisor), "managed-switch" (switch con gestión
-	// identificado por LLDP — hoy switch-netgear).
-	Infra string `json:"infra,omitempty"` // "hypervisor"|"ct"|"managed-switch"
+	// identificado por LLDP — hoy switch-netgear), "ap" (punto de acceso
+	// gestionado, p. ej. reportado por el controlador UniFi).
+	Infra string `json:"infra,omitempty"` // "hypervisor"|"ct"|"managed-switch"|"ap"
 	// --- mDNS/SSDP fingerprinting (#338) ---
 	// MdnsServices: mDNS service types advertised by this device (from umdns).
 	// e.g. ["_airplay._tcp", "_raop._tcp"] for an Apple TV.
@@ -340,6 +341,13 @@ type DistributionNode struct {
 	// existe como Device Y como nodo managed, sin duplicar el render).
 	Mac  string    `json:"mac,omitempty"`
 	Lldp *LldpInfo `json:"lldp,omitempty"`
+	// Role: what the managed box actually is, "switch" or "ap". Kind stays
+	// "managed" for both because it drives the layout (a box known by MAC
+	// and IP, drawn as a node instead of a client chip), but an access point
+	// is not a switch and must not be labelled or drawn as one. Empty on a
+	// node whose role is unknown, which reads as a switch, the only thing
+	// LLDP inference has ever found.
+	Role string `json:"role,omitempty"`
 }
 
 // AlertEvent vive en internal/alerts (SPEC-ALERTAS §1: Category/Urgent/Ts);

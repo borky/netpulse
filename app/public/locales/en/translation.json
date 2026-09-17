@@ -337,7 +337,9 @@
       "hypervisor": "Hypervisor",
       "hypervisorTip": "Host with CTs/VMs nested behind its virtual bridge",
       "managedSwitch": "Managed switch",
-      "managedSwitchTip": "Switch identified via LLDP"
+      "managedSwitchTip": "Switch identified via LLDP",
+      "ap": "Access point",
+      "apTip": "Managed access point reported by its controller"
     },
     "bandAll": "All",
     "changeView": "Change view",
@@ -1068,7 +1070,8 @@
       "managedSwitch": "Managed switch",
       "throughput": "Link throughput",
       "title": "Links between devices",
-      "wifiUplink": "WiFi uplink"
+      "wifiUplink": "WiFi uplink",
+      "managedAp": "Access point"
     },
     "mapAria": "Network map: Internet connected to the Flint 2 Gateway, three access points (Living Room, Study and Patio) with their clients, and two active WireGuard tunnels.",
     "peerAria": "{{name}}, active WireGuard tunnel, {{ip}}",
@@ -1109,7 +1112,8 @@
       "noIp": "no IP · not directly queryable",
       "port": "Port on {{router}}",
       "macs": "Learned MACs",
-      "fdbNote": "FDB: {{count}} heterogeneous MACs on a single physical port. Probably a switch; we cannot tell for sure without LLDP."
+      "fdbNote": "FDB: {{count}} heterogeneous MACs on a single physical port. Probably a switch; we cannot tell for sure without LLDP.",
+      "ap": "Access point"
     },
     "host": {
       "hypervisor": "hypervisor",

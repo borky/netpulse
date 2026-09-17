@@ -156,9 +156,10 @@ export type PeerType = 'movil' | 'portatil' | 'tablet' | 'sitio' | 'desconocido'
 /**
  * Rol de infraestructura sellado server-side (SPEC-65 D65-2):
  * "hypervisor" (host Proxmox/VMware/…), "ct" (CT/VM anidado bajo un
- * hipervisor), "managed-switch" (switch con gestión identificado por LLDP).
+ * hipervisor), "managed-switch" (switch con gestión identificado por LLDP),
+ * "ap" (punto de acceso gestionado, reportado por su controlador).
  */
-export type DeviceInfra = 'hypervisor' | 'ct' | 'managed-switch'
+export type DeviceInfra = 'hypervisor' | 'ct' | 'managed-switch' | 'ap'
 
 export interface WGPeer {
   id: string
@@ -287,6 +288,14 @@ export interface DistributionNode {
    * los Devices cuya MAC coincide con esta — se representa SOLO como nodo.
    */
   mac?: string
+  /**
+   * Qué es realmente la caja gestionada: "switch" o "ap". `kind` sigue
+   * siendo "managed" en ambos porque decide el layout (caja con MAC e IP,
+   * dibujada como nodo y no como chip de cliente), pero un punto de acceso
+   * no es un switch. Ausente = switch (lo único que la inferencia LLDP
+   * ha encontrado nunca).
+   */
+  role?: 'switch' | 'ap'
 }
 
 export type AlertSeverity = 'warn' | 'critical' | 'info' | 'ok'

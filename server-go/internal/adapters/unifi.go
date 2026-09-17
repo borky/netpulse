@@ -148,23 +148,24 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 				dists[i].Ip = dev.IP
 			}
 			dists[i].Source = "unifi"
+			dists[i].Role = dev.Kind
 			if n := count[mac]; n > dists[i].MacCount {
 				dists[i].MacCount = n
 			}
 			nodeIDByMac[mac] = dists[i].ID
+			markInfra(devices, byMAC, mac, dev.Kind)
 			continue
 		}
 		id := "unifi-" + strings.ToLower(strings.ReplaceAll(mac, ":", ""))
 		dists = append(dists, DistributionNode{
 			ID: id, Kind: "managed", Source: "unifi", RouterID: gatewayID,
 			Name: dev.Name, Ip: dev.IP, Mac: mac, MacCount: count[mac],
+			// Role, not Kind: the map needs "managed" to draw a node rather
+			// than a client chip, but it must not call an AP a switch.
+			Role: dev.Kind,
 		})
 		nodeIDByMac[mac] = id
-		// The box itself, if NetPulse also sees it as a device, is a piece of
-		// infrastructure and not a plain client.
-		if i, ok := byMAC[mac]; ok {
-			devices[i].Infra = "managed-switch"
-		}
+		markInfra(devices, byMAC, mac, dev.Kind)
 	}
 
 	// Pass 2: chain the boxes. An AP hangs off the switch port the
@@ -224,6 +225,22 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 		}
 	}
 	return dists
+}
+
+// markInfra tags the box's own device entry, when NetPulse also sees it as a
+// client, with what it is: infrastructure, and which kind. An access point
+// carried the "managed-switch" badge before this, which read "Managed
+// switch · identified via LLDP" on a box that is neither.
+func markInfra(devices []Device, byMAC map[string]int, mac, kind string) {
+	i, ok := byMAC[mac]
+	if !ok {
+		return
+	}
+	if kind == "ap" {
+		devices[i].Infra = "ap"
+		return
+	}
+	devices[i].Infra = "managed-switch"
 }
 
 // portNameOf: the label an admin gave a switch port in the controller, or ""
