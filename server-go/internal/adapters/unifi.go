@@ -184,9 +184,9 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 				dists[i].Port = fmt.Sprintf("lan%d", dev.UplinkPort)
 				dists[i].PortLabel = portNameOf(inv, dev.UplinkMAC, dev.UplinkPort)
 			}
-			// La velocidad la sabe el switch: es la negociada en esa boca. Se
-			// venía descartando, y la tabla de enlaces escribía "1 Gbps" en
-			// todas las filas porque no tenía nada mejor.
+			// The switch knows the speed: it is what was negotiated on that
+			// port. It was being discarded, and the links table printed
+			// "1 Gbps" on every row for want of anything better.
 			if sp := portSpeedOf(inv, dev.UplinkMAC, dev.UplinkPort); sp > 0 {
 				dists[i].SpeedMbps = sp
 			}
