@@ -189,12 +189,17 @@ type Router struct {
 	// managed-switch sondeado por SNMP (que sí reporta contadores de bytes →
 	// la UI pinta bps) de un beacon/external que solo reporta tramas (fps)
 	// (#661). Ausente/false = no se sondea por SNMP.
-	SnmpEnabled bool   `json:"snmpEnabled,omitempty"`
-	CPU         *int   `json:"cpu"`
-	RAM         *int   `json:"ram"`
-	Temp        *int   `json:"temp"`
-	Uptime      string `json:"uptime"` // "<d>d <h>h" | "—"
-	Clients     int    `json:"clients"`
+	SnmpEnabled bool `json:"snmpEnabled,omitempty"`
+	CPU         *int `json:"cpu"`
+	RAM         *int `json:"ram"`
+	Temp        *int `json:"temp"`
+	// TempSource: the hwmon chip behind Temp when the board has no thermal
+	// zone of its own ("ath10k_hwmon" = a WiFi radio, not the SoC). Empty =
+	// a real board sensor. The UI has to say which, or a radio running warm
+	// reads as an overheating router.
+	TempSource string `json:"tempSource,omitempty"`
+	Uptime     string `json:"uptime"` // "<d>d <h>h" | "—"
+	Clients    int    `json:"clients"`
 	// BandSplit: clientes online por banda (2.4/5/6 GHz + cable) — issue #645.
 	// Misma fuente que Clients (mismo recuento), suma ≤ Clients (los clientes
 	// con banda desconocida "—" no caen en ninguna banda).

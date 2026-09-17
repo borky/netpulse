@@ -60,6 +60,13 @@ export interface Router {
   cpu: number | null // %
   ram: number | null // %
   temp: number | null // °C
+  /**
+   * Chip behind `temp` when the board exposes no thermal zone of its own
+   * ("ath10k_hwmon" = a WiFi radio, not the SoC). Absent = a board sensor.
+   * Shown next to the reading: a radio idles warmer than a CPU, and without
+   * the distinction a healthy router looks like it is overheating.
+   */
+  tempSource?: string
   uptime: string
   clients: number
   /**
