@@ -565,6 +565,12 @@ func (l *Live) polledFromAgent(cfg RouterConfig, p *probe.Payload) *routerPolled
 	}
 	if p.Data.Arp != nil {
 		out.arp = p.Data.Arp
+		// An agent old enough not to send arpStale leaves this empty, and
+		// the whole table counts as presence, exactly as it used to.
+		out.arpStale = make(map[string]bool, len(p.Data.ArpStale))
+		for _, mac := range p.Data.ArpStale {
+			out.arpStale[strings.ToUpper(mac)] = true
+		}
 	}
 	// Wan (#276): the agent carries it in the payload since 2.28.24+. Before
 	// that the only source was the server's SSH probe, which never runs on an
