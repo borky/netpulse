@@ -206,6 +206,8 @@ export interface LldpInfo {
 }
 
 export interface Device {
+  /** Velocidad negociada (Mbps) de la boca donde está enchufado, si se sabe. */
+  speedMbps?: number
   id: string
   name: string
   type: DeviceType
@@ -298,6 +300,12 @@ export interface DistributionNode {
    * ha encontrado nunca).
    */
   role?: 'switch' | 'ap'
+  /**
+   * Velocidad negociada (Mbps) del enlace por el que cuelga, cuando alguien
+   * la sabe de verdad (hoy: la boca del switch, vía controlador). Ausente =
+   * desconocida, y la tabla escribe "—" en vez de inventarse un valor.
+   */
+  speedMbps?: number
 }
 
 export type AlertSeverity = 'warn' | 'critical' | 'info' | 'ok'

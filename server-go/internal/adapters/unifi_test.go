@@ -195,3 +195,54 @@ func TestApplyUniFiInfraPlacesAnOrphanContainer(t *testing.T) {
 		t.Fatalf("an orphan container keeps the switch port: %+v", devices[0])
 	}
 }
+
+// The negotiated speed of a switch port is real measured data; the links
+// table used to print "1 Gbps" on every row for want of it.
+func TestApplyUniFiInfraCarriesThePortSpeed(t *testing.T) {
+	inv := testInventory()
+	// Port 3 carries the AP, port 5 the wired client.
+	d := inv.devices["02:00:00:00:00:10"]
+	d.Ports = []unifi.Port{
+		{Idx: 3, Name: "AP Living", Up: true, Speed: 1000},
+		{Idx: 5, Name: "Desk", Up: true, Speed: 2500},
+		{Idx: 7, Name: "Down", Up: false, Speed: 0},
+	}
+	inv.devices["02:00:00:00:00:10"] = d
+
+	devices := []Device{
+		{MAC: "02:00:00:00:00:01", Name: "desktop"},
+		{MAC: "02:00:00:00:00:02", Name: "phone"},
+	}
+	dists := applyUniFiInfra(devices, nil, inv, "gateway")
+
+	var ap *DistributionNode
+	for i := range dists {
+		if dists[i].Mac == "02:00:00:00:00:20" {
+			ap = &dists[i]
+		}
+	}
+	if ap == nil || ap.SpeedMbps != 1000 {
+		t.Fatalf("ap uplink speed: %+v", ap)
+	}
+	if devices[0].SpeedMbps != 2500 {
+		t.Fatalf("wired client speed: %+v", devices[0])
+	}
+	// A wireless client has no port and therefore no wire speed.
+	if devices[1].SpeedMbps != 0 {
+		t.Fatalf("a wireless client got a link speed: %+v", devices[1])
+	}
+}
+
+// A port the controller reports as down (speed 0) leaves the field unset,
+// so the UI says "—" instead of "0 Mbps".
+func TestApplyUniFiInfraIgnoresAZeroSpeed(t *testing.T) {
+	inv := testInventory()
+	d := inv.devices["02:00:00:00:00:10"]
+	d.Ports = []unifi.Port{{Idx: 5, Name: "Desk", Up: false, Speed: 0}}
+	inv.devices["02:00:00:00:00:10"] = d
+	devices := []Device{{MAC: "02:00:00:00:00:01", Name: "desktop"}}
+	applyUniFiInfra(devices, nil, inv, "gateway")
+	if devices[0].SpeedMbps != 0 {
+		t.Fatalf("speed: %+v", devices[0])
+	}
+}

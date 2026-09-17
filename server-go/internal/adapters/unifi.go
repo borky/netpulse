@@ -184,6 +184,12 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 				dists[i].Port = fmt.Sprintf("lan%d", dev.UplinkPort)
 				dists[i].PortLabel = portNameOf(inv, dev.UplinkMAC, dev.UplinkPort)
 			}
+			// La velocidad la sabe el switch: es la negociada en esa boca. Se
+			// venía descartando, y la tabla de enlaces escribía "1 Gbps" en
+			// todas las filas porque no tenía nada mejor.
+			if sp := portSpeedOf(inv, dev.UplinkMAC, dev.UplinkPort); sp > 0 {
+				dists[i].SpeedMbps = sp
+			}
 			break
 		}
 	}
@@ -224,6 +230,9 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 			if label := portNameOf(inv, c.SwitchMAC, c.SwitchPort); label != "" {
 				devices[i].PortLabel = label
 			}
+			if sp := portSpeedOf(inv, c.SwitchMAC, c.SwitchPort); sp > 0 {
+				devices[i].SpeedMbps = sp
+			}
 		case c.APMAC != "":
 			id, ok := nodeIDByMac[c.APMAC]
 			if !ok {
@@ -254,6 +263,22 @@ func markInfra(devices []Device, byMAC map[string]int, mac, kind string) {
 		return
 	}
 	devices[i].Infra = "managed-switch"
+}
+
+// portSpeedOf: the speed negotiated on that switch port, in Mbps, or 0 when
+// the controller does not report one. Real measured data, unlike the
+// "1 Gbps" the links table used to print on every row.
+func portSpeedOf(inv *unifiInventory, switchMAC string, port int) int {
+	dev, ok := inv.devices[strings.ToUpper(switchMAC)]
+	if !ok {
+		return 0
+	}
+	for _, p := range dev.Ports {
+		if p.Idx == port {
+			return p.Speed
+		}
+	}
+	return 0
 }
 
 // portNameOf: the label an admin gave a switch port in the controller, or ""
