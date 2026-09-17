@@ -619,6 +619,7 @@ func (l *Live) polledFromAgent(cfg RouterConfig, p *probe.Payload) *routerPolled
 		}
 		if sd.Temp != nil {
 			out.temp = *sd.Temp
+			out.tempSource = sd.TempSource
 		}
 		out.net = &NetDevBps{RxBps: sd.RxBps, TxBps: sd.TxBps}
 		out.latencyMs = sd.LatencyMs
@@ -636,6 +637,7 @@ func (l *Live) polledFromAgent(cfg RouterConfig, p *probe.Payload) *routerPolled
 		}
 		if sd.Temp != nil {
 			out.temp = *sd.Temp
+			out.tempSource = sd.TempSource
 		}
 		if sd.SysInfo != nil {
 			sysInfo = sd.SysInfo

@@ -98,6 +98,7 @@ type routerPolled struct {
 	cpu       int
 	ram       int
 	temp              int
+	tempSource        string
 	flash             string
 	firmwareAvailable string
 	uptimeSec         float64
@@ -1238,7 +1239,7 @@ func (l *Live) buildRouter(p *routerPolled, history []histPoint) Router {
 	r := Router{
 		ID: p.cfg.ID, Name: name, Model: model, ModelShort: model,
 		IP: p.cfg.Host, Status: status, Health: health,
-		CPU: iptr(p.cpu), RAM: iptr(p.ram), Temp: iptr(p.temp),
+		CPU: iptr(p.cpu), RAM: iptr(p.ram), Temp: iptr(p.temp), TempSource: p.tempSource,
 		Uptime: fmtUptime(p.uptimeSec), Clients: len(p.leases),
 		Sparkline: sparkline, TempThreshold: thr,
 	}
