@@ -339,7 +339,9 @@
       "managedSwitch": "Switch gestionado",
       "managedSwitchTip": "Switch identificado vía LLDP",
       "ap": "Punto de acceso",
-      "apTip": "Punto de acceso gestionado, reportado por su controlador"
+      "apTip": "Punto de acceso gestionado, reportado por su controlador",
+      "vm": "VM",
+      "vmTip": "Máquina virtual en {{host}}"
     },
     "bandAll": "Todas",
     "changeView": "Cambiar vista",

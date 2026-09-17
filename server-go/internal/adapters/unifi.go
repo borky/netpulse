@@ -210,7 +210,7 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 		// could not be identified has no parent to protect, and the switch
 		// port is then better than nothing -- without this it would fall
 		// through to the gateway as a wired device with no evidence.
-		if devices[i].Infra == "ct" && devices[i].AttachTo != "" {
+		if (devices[i].Infra == "ct" || devices[i].Infra == "vm") && devices[i].AttachTo != "" {
 			continue
 		}
 		switch {

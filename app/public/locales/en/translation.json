@@ -339,7 +339,9 @@
       "managedSwitch": "Managed switch",
       "managedSwitchTip": "Switch identified via LLDP",
       "ap": "Access point",
-      "apTip": "Managed access point reported by its controller"
+      "apTip": "Managed access point reported by its controller",
+      "vm": "VM",
+      "vmTip": "Virtual machine on {{host}}"
     },
     "bandAll": "All",
     "changeView": "Change view",
