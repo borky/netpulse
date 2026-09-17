@@ -34,8 +34,8 @@ var typeRules = []struct {
 	{"ordenador", []string{"imac", "mac-mini", "macstudio", "mac-studio", "desktop", "sobremesa", "workstation", "nuc", "ser9", "pc-", "-pc", "tower", "minipc", "mini-pc"}},
 	{"switch", []string{"gs308", "gs305", "tl-sg", "switch"}},
 	{"iot", []string{"roomba", "irobot", "roborock", "aspirador", "robot", "tasmota", "sonoff", "shelly", "esphome", "tuya", "smartlife", "meross", "gosund", "switchbot", "aqara", "lumi", "zigbee", "zhirui", "osram", "ikea", "tradfri", "hue", "wled", "athom", "cargador", "wallbox", "feyree", "tedee", "cerradura", "enchufe", "plug", "bombilla", "downlight", "persiana", "curtain", "riego", "sprinkler", "termo", "termostato", "caldera", "aire", "ac-", "slzb", "impresora", "printer", "epson", "brother", "canon",
-		// Xiaomi vende móviles Y electrodomésticos bajo el mismo OUI, así
-		// que el fabricante no decide: el nombre sí.
+		// Xiaomi sells phones AND appliances under the same OUI, so the
+		// manufacturer cannot decide it; the name can.
 		"purificator", "purificador", "purifier", "humidifier", "humidificador"}},
 }
 
@@ -84,8 +84,8 @@ func GuessDeviceType(hostname, manufacturer, dhcpVendorClass, dhcpClientID, lldp
 		}
 	}
 	// Fabricante como refuerzo cuando el hostname no dice nada (OUI DB).
-	// Cámaras primero: un fabricante de videovigilancia es más específico
-	// que "iot", y hay un tipo propio para ello.
+	// Cameras first: a surveillance manufacturer is more specific than
+	// "iot", and there is a type of its own for it.
 	if oui.IsCameraVendor(m) {
 		return "camara"
 	}

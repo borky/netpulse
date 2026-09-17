@@ -480,14 +480,14 @@ func neighborIsRouter(nb *LldpNeighbor, routers []routerIdentity, selfID string)
 	return nil
 }
 
-// fillNodeSpeeds pone la velocidad del PRIMER salto: lo que cuelga de una
-// boca del router va a la velocidad que el propio router negoció en ella, y
-// eso ya lo mide el agente. El sello de UniFi cubre lo que hay más allá
-// (bocas del switch); entre los dos, la tabla de enlaces deja de escribir
-// "1 Gbps" por defecto en filas que nadie ha medido.
+// fillNodeSpeeds sets the speed of the FIRST hop: whatever hangs off a
+// router port runs at the speed the router negotiated there, and the agent
+// already measures it. The UniFi seal covers what lies beyond (the switch
+// ports); between the two, the links table stops printing a default
+// "1 Gbps" on rows nobody has measured.
 //
-// Solo sobre nodos que cuelgan directamente de un router (sin Parent) y a
-// los que nadie ha dado ya una velocidad.
+// Only for nodes hanging directly off a router (no Parent) that nobody has
+// already given a speed.
 func fillNodeSpeeds(polled map[string]*routerPolled, dists []DistributionNode) {
 	for i := range dists {
 		if dists[i].SpeedMbps > 0 || dists[i].Parent != "" || dists[i].Port == "" {

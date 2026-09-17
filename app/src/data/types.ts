@@ -156,10 +156,10 @@ export type PeerType = 'movil' | 'portatil' | 'tablet' | 'sitio' | 'desconocido'
 /**
  * Rol de infraestructura sellado server-side (SPEC-65 D65-2):
  * "hypervisor" (host Proxmox/VMware/…), "ct" (CT/VM anidado bajo un
- * hipervisor), "vm" (máquina virtual: solo el inventario del hipervisor
- * distingue una VM de un contenedor), "managed-switch" (switch con gestión
- * identificado por LLDP),
- * "ap" (punto de acceso gestionado, reportado por su controlador).
+ * hypervisor), "vm" (virtual machine: only the hypervisor inventory can
+ * tell a VM from a container), "managed-switch" (a managed switch
+ * identified by LLDP), "ap" (a managed access point, reported by its
+ * controller).
  */
 export type DeviceInfra = 'hypervisor' | 'ct' | 'vm' | 'managed-switch' | 'ap'
 
@@ -293,17 +293,17 @@ export interface DistributionNode {
    */
   mac?: string
   /**
-   * Qué es realmente la caja gestionada: "switch" o "ap". `kind` sigue
-   * siendo "managed" en ambos porque decide el layout (caja con MAC e IP,
-   * dibujada como nodo y no como chip de cliente), pero un punto de acceso
-   * no es un switch. Ausente = switch (lo único que la inferencia LLDP
-   * ha encontrado nunca).
+   * What the managed box actually is: "switch" or "ap". `kind` stays
+   * "managed" for both because it drives the layout (a box with MAC and IP,
+   * drawn as a node instead of a client chip), but an access point is not a
+   * switch. Absent = switch, the only thing the LLDP inference has ever
+   * found.
    */
   role?: 'switch' | 'ap'
   /**
-   * Velocidad negociada (Mbps) del enlace por el que cuelga, cuando alguien
-   * la sabe de verdad (hoy: la boca del switch, vía controlador). Ausente =
-   * desconocida, y la tabla escribe "—" en vez de inventarse un valor.
+   * Speed negotiated (Mbps) on the link it hangs off, when somebody
+   * actually knows it (today: the switch port, via the controller). Absent
+   * = unknown, and the table writes "—" instead of inventing a value.
    */
   speedMbps?: number
 }

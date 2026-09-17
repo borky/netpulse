@@ -25,11 +25,12 @@ import { COLOR, VB_H, VB_W, bandColor, linkColor, statusColor } from './model'
 /** Nombre preferente de un puerto: la etiqueta LuCI si existe, si no el id
  * físico (issue #258). */
 /**
- * Qué clase de invitado es un chip anidado bajo un hipervisor. isCt es
- * posicional (cuelga del host, se dibuja en la rejilla), no dice QUÉ es: una
- * VM salía rotulada "CT" porque compartían etiqueta. Solo el sello del
- * hipervisor distingue las dos, así que sin ese dato se dice "contenedor",
- * que es lo que la inferencia L2 puede afirmar.
+ * Which kind of guest a chip nested under a hypervisor is. isCt is
+ * positional -- it hangs off the host and is drawn in the grid -- and says
+ * nothing about WHAT it is: a VM came out labelled "CT" because the two
+ * shared a label. Only the hypervisor seal tells them apart, so without
+ * that datum it says "container", which is what the L2 inference can
+ * claim.
  */
 function guestKind(d: Device): 'ct' | 'vm' {
   return d.infra === 'vm' ? 'vm' : 'ct'
@@ -149,7 +150,7 @@ function TooltipCard({
   touch: boolean
   wan: WanInfo
   /** nombre del equipo dueño del puerto de un nodo (D8: tooltip dist): el
-   *  padre de la cadena si lo hay, y si no el router */
+   *  the parent in the chain when there is one, the router otherwise */
   portOwnerName: (node: DistributionNode) => string
   /** etiquetar el dispositivo desde la propia tarjeta (#656 feedback: más
    *  sencillo que introducir la MAC a mano) */
@@ -892,10 +893,10 @@ export function TopologyMap({
     [routerNodes],
   )
   /**
-   * De quién es el puerto en el que cuelga un nodo. `port` es del PADRE, no
-   * del router: en una cadena (AP → switch → router) el puerto del AP es una
-   * boca del switch, y etiquetarlo "Puerto de <router>" señalaba un equipo
-   * que ni siquiera tiene esa boca.
+   * Whose port a node hangs off. `port` belongs to the PARENT, not to the
+   * router: in a chain (AP → switch → router) the AP's port is a socket on
+   * the switch, and labelling it "Port on <router>" pointed at a box that
+   * does not even have that socket.
    */
   const portOwnerName = useCallback(
     (node: DistributionNode) => {
@@ -1610,10 +1611,11 @@ function LabelText({
 // ---------------------------------------------------------------------------
 
 /**
- * Procedencia de una caja gestionada, para la pastilla del nodo y del
- * tooltip: LLDP si el router la vio anunciarse, y si no el integrador que la
- * reportó. Antes decía "LLDP" en todas, también en los AP que solo conoce el
- * controlador UniFi. "" = sin procedencia conocida → sin pastilla.
+ * Where a managed box came from, for the pill on the node and in the
+ * tooltip: LLDP if the router saw it announce itself, otherwise the
+ * integration that reported it. It used to say "LLDP" on all of them,
+ * including APs only the UniFi controller knows. "" = unknown provenance,
+ * and then no pill at all.
  */
 function distBadge(n: DistributionNode): string {
   if (n.lldp) return 'LLDP'
@@ -1650,8 +1652,8 @@ const DistNodeGroup = memo(function DistNodeGroup({
 }) {
   const { t } = useTranslation()
   const managed = dv.node.kind === 'managed'
-  // Un AP gestionado es un nodo managed más (misma geometría), pero no se
-  // dibuja ni se nombra como un switch.
+  // A managed AP is just another managed node (same geometry), but it is
+  // neither drawn nor named as a switch.
   const isAp = dv.node.role === 'ap'
   const NodeIcon = isAp ? Wifi : DEVICE_ICONS.switch
   const nodeLabel = dv.node.name ?? t(isAp ? 'topology.dist.ap' : 'topology.dist.managed')

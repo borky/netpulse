@@ -438,9 +438,9 @@ func TestInferTopologyPortLabelLuCI(t *testing.T) {
 	}
 }
 
-// El primer salto lo mide el propio router: un nodo colgado de una boca
-// suya hereda la velocidad negociada en ella, en vez del "1 Gbps" que la
-// tabla de enlaces escribía por defecto.
+// The router measures the first hop itself: a node hanging off one of its
+// ports inherits the speed negotiated there, instead of the "1 Gbps" the
+// links table printed by default.
 func TestFillNodeSpeedsFromTheRouterPort(t *testing.T) {
 	polled := map[string]*routerPolled{
 		"gateway": {
@@ -455,12 +455,12 @@ func TestFillNodeSpeedsFromTheRouterPort(t *testing.T) {
 	dists := []DistributionNode{
 		{ID: "a", RouterID: "gateway", Port: "lan2"},
 		{ID: "b", RouterID: "gateway", Port: "lan3"},
-		// Boca caída: nadie ha medido nada, y "—" es la respuesta honesta.
+		// Port down: nobody measured anything, and "—" is the honest answer.
 		{ID: "c", RouterID: "gateway", Port: "lan4"},
-		// Cuelga de otro nodo, no del router: su velocidad la pone quien
-		// conozca esa boca (el sello del controlador), no el router.
+		// Hangs off another node, not off the router: its speed comes from
+		// whoever knows that port (the controller seal), not from here.
 		{ID: "d", RouterID: "gateway", Port: "lan5", Parent: "a"},
-		// Una velocidad ya puesta no se toca.
+		// A speed already set is left alone.
 		{ID: "e", RouterID: "gateway", Port: "lan2", SpeedMbps: 100},
 		// Router desconocido.
 		{ID: "f", RouterID: "fantasma", Port: "lan2"},

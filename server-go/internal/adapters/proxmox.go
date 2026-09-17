@@ -45,16 +45,16 @@ type pveInventory struct {
 	// interna de los mapas es "instancia|nodo" para que dos clusters con
 	// nodos homónimos no se pisen.
 	nodes map[string]pveNode
-	// nodeIPs: "instancia|nodo" → TODAS las direcciones conocidas del nodo.
-	// Permite casar el device HOST por IP cuando NetPulse no lo conoce por
-	// su nombre — que es lo normal: el nodo lleva su nombre de cluster y la LAN lo
-	// conoce como "proxmox", el nombre de su lease.
+	// nodeIPs: "instance|node" → EVERY address known for that node. It is
+	// how the HOST device is matched by IP when NetPulse does not know it
+	// by name, which is the normal case: a node carries its cluster name
+	// while the LAN knows the machine as "proxmox", the name on its lease.
 	//
-	// Son varias a propósito. Un nodo tiene la dirección de gestión (el
-	// bridge declarado en sus interfaces) y la que anuncia al cluster, y en
-	// un cluster serio NO son la misma: corosync va por una red dedicada.
-	// Quedarse con una sola significaría elegir mal en la mitad de las
-	// instalaciones, así que se guardan todas y casa la que coincida.
+	// Several on purpose. A node has its management address (the bridge
+	// declared in its interfaces) and the one it announces to the cluster,
+	// and on a serious cluster those are NOT the same: corosync runs on a
+	// dedicated network. Keeping only one would pick wrong on half the
+	// installations, so all of them are kept and whichever matches wins.
 	nodeIPs map[string][]string
 }
 
@@ -145,12 +145,12 @@ func (l *Live) fetchPveInventory(clients []pveInstClient) *pveInventory {
 			log.Printf("[netpulse:pve] %s cluster/resources: %v", ic.inst.ID, err)
 			continue
 		}
-		// Direcciones que el cluster conoce de cada nodo. Es la única fuente
-		// que queda cuando la IP de gestión del host no vive en
-		// /etc/network/interfaces (DHCP en la NIC, systemd-networkd, sin
-		// bridge declarado): ahí las interfaces salen sin address y no dejan
-		// nada con lo que casar el device del host, que es lo que impedía
-		// que el hipervisor apareciera como nodo del mapa.
+		// The addresses the cluster knows for each node. It is the only
+		// source left when the host's management IP does not live in
+		// /etc/network/interfaces (DHCP on the NIC, systemd-networkd, no
+		// bridge declared): there the interfaces come back with no address
+		// and leave nothing to match the host device by, which is what kept
+		// the hypervisor from appearing as a node on the map.
 		statusIP := map[string]string{}
 		if nodes, err := ic.c.ClusterStatus(ctx); err == nil {
 			for _, n := range nodes {
@@ -168,11 +168,11 @@ func (l *Live) fetchPveInventory(clients []pveInstClient) *pveInventory {
 				if r.Node != "" {
 					key := nodeKey(ic.inst.ID, r.Node)
 					inv.nodes[key] = pveNode{Instance: ic.inst.ID, Node: r.Node}
-					// Direcciones del host con las que casar su device. Se
-					// recogen TODAS, no la "mejor": el bridge declarado en
-					// las interfaces y la que el nodo anuncia al cluster son
-					// distintas en cuanto corosync tiene su propia red, y
-					// cualquiera de las dos puede ser la que NetPulse ve.
+					// The host addresses to match its device by. ALL of
+					// them are collected, not the "best" one: the bridge
+					// declared in the interfaces and the address announced
+					// to the cluster differ as soon as corosync has its own
+					// network, and either may be the one NetPulse sees.
 					var ips []string
 					add := func(ip string) {
 						if ip == "" {
@@ -185,20 +185,20 @@ func (l *Live) fetchPveInventory(clients []pveInstClient) *pveInventory {
 						}
 						ips = append(ips, ip)
 					}
-					// El bridge de las interfaces primero: es la dirección de
-					// gestión, la que la LAN suele conocer.
+					// The declared bridge first: that is the management
+					// address, the one the LAN usually knows.
 					if ip, err := ic.c.NodeIP(ctx, r.Node); err != nil {
 						log.Printf("[netpulse:pve] %s nodeip %s: %v", ic.inst.ID, r.Node, err)
 					} else {
 						add(ip)
 					}
 					add(statusIP[r.Node])
-					// Y si la API no sabe decir NINGUNA (un host con la IP
-					// configurada fuera de /etc/network/interfaces), el host
-					// del endpoint: en una instancia de un solo nodo ES la
-					// suya. En un cluster el endpoint es un nodo cualquiera
-					// y prestarle su IP a los demás sería inventarse la
-					// topología.
+					// And when the API can name NONE (a host with its
+					// address configured outside /etc/network/interfaces),
+					// the endpoint's own host: on a single-node instance
+					// that IS its address. On a cluster the endpoint is
+					// whichever node was typed, and lending its IP to the
+					// others would be inventing topology.
 					if len(ips) == 0 && singleNodeOf(resources) {
 						add(ic.c.HostOfURL())
 					}
@@ -312,26 +312,27 @@ func applyPVEInfra(devices []Device, dists []DistributionNode, inv *pveInventory
 			continue // el CT no es un device conocido (apagado o sin tráfico)
 		}
 		hostID := hostIDByNode[nodeKey(vm.Instance, vm.Node)]
-		// Contenedor o máquina virtual: el inventario lo dice ("lxc"/"qemu")
-		// y hasta ahora se ignoraba, así que una VM salía etiquetada CT.
-		// Solo aquí se distingue: ni la inferencia L2 ni un anclaje manual
-		// pueden saber cuál de las dos cosas es, y siguen diciendo "ct".
+		// Container or virtual machine: the inventory says which ("lxc" or
+		// "qemu") and it was being ignored, so a VM came out badged CT.
+		// Only here can the two be told apart -- neither the L2 inference
+		// nor a manual anchor can know, and both keep saying "ct".
 		if vm.Type == "qemu" {
 			devices[idx].Infra = "vm"
 		} else {
 			devices[idx].Infra = "ct"
 		}
-		// El nombre del invitado es el que le puso el administrador en
-		// Proxmox, y para un CT suele ser el ÚNICO que hay: no pide DHCP
-		// con hostname, así que sin esto se queda con su MAC por nombre —
-		// una lista de "BC:24:11:..." con etiqueta CT y nada más. Solo
-		// cuando no tiene nombre real, igual que el renombrado del host de
-		// unas líneas más abajo: un lease o un alias del usuario mandan.
+		// The guest's name is the one the admin gave it in Proxmox, and for
+		// a container it is usually the ONLY one there is: it rarely asks
+		// for DHCP with a hostname, so without this it keeps its MAC as a
+		// name -- a column of "BC:24:11:..." wearing a CT badge. Only when
+		// it has no real name, like the host rename a few lines below: a
+		// lease or a name the user set by hand still wins.
 		if vm.Name != "" && looksLikeMACName(devices[idx].Name) {
 			devices[idx].Name = vm.Name
 		}
-		// Y con el nombre puesto, el tipo. Fuera del if: un invitado que ya
-		// traía nombre de su lease tampoco se había clasificado bien.
+		// And with the name set, the type. Outside the if: a guest that
+		// already carried a lease name had not been classified right
+		// either, because it was never renamed and so never re-examined.
 		reclassify(&devices[idx], "servidor")
 		// El sello PVE es ground truth: si el CT tiene host conocido, cuelga
 		// de él (sobreescribe el attachTo inferido por L2, que en puertos
@@ -409,10 +410,10 @@ func macToDeviceID(mac string) string {
 	return strings.ToLower(strings.ReplaceAll(mac, ":", "-"))
 }
 
-// singleNodeOf: true si el inventario tiene exactamente un nodo. Solo
-// entonces se puede afirmar que el host del endpoint configurado es la
-// dirección de ESE nodo; en un cluster el endpoint apunta a uno cualquiera
-// y atribuirle su IP a los demás sería inventarse la topología.
+// singleNodeOf: true when the inventory holds exactly one node. Only then
+// can the configured endpoint's host be claimed as THAT node's address; on a
+// cluster the endpoint points at whichever node was typed, and attributing
+// its IP to the others would be inventing topology.
 func singleNodeOf(resources []pve.Resource) bool {
 	n := 0
 	for _, r := range resources {
@@ -423,21 +424,21 @@ func singleNodeOf(resources []pve.Resource) bool {
 	return n == 1
 }
 
-// reclassify vuelve a estimar el tipo de un device del inventario PVE. La
-// clasificación corre dentro de buildDevices y este sello llega después, así
-// que un invitado bautizado aquí se había clasificado cuando su nombre era
-// todavía su MAC: "adguard" salía sin tipo aunque esa palabra es una regla
-// de "servidor" desde siempre.
+// reclassify re-guesses the type of a device from the PVE inventory.
+// Classification runs inside buildDevices and this seal arrives afterwards,
+// so a guest named here had been classified while its name was still its
+// MAC: "adguard" came out untyped although that word has been a "servidor"
+// rule since the classifier existed.
 //
-// fallback es el tipo cuando las reglas siguen sin decir nada. Para un
-// invitado o un host de hipervisor ese "servidor" no es una suposición: un
-// CT es una máquina que corre un servicio, y lo que sobra son nombres de aplicación que
-// ninguna lista de palabras va a cubrir nunca. Ser invitado de Proxmox es la evidencia; mantener un
-// diccionario de aplicaciones no es una estrategia.
+// fallback is the type to use when the rules still say nothing. For a guest
+// or a hypervisor host, "servidor" is not a guess: a container is a machine
+// running a service, and what is left over are names no word list will ever
+// cover -- application names. Being a Proxmox guest is
+// the evidence; maintaining a dictionary of applications is not a strategy.
 //
-// Se llama sin las huellas DHCP/LLDP: si alguna hubiera dicho algo el device
-// no estaría en "desconocido". Lo único nuevo es el nombre, que es justo la
-// primera regla que mira el clasificador.
+// Called without the DHCP/LLDP fingerprints: if any of them had said
+// something the device would not be unknown. The only new thing is the name,
+// which is the first rule the classifier reads.
 func reclassify(d *Device, fallback string) {
 	if d.Type != "" && d.Type != "desconocido" {
 		return

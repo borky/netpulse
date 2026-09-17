@@ -655,16 +655,17 @@ func (s *server) handleDeleteProxmoxConfig(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// POST /api/config/proxmox/test - prueba una instancia y cuenta lo que ve.
+// POST /api/config/proxmox/test - tests an instance and counts what it sees.
 //
-// Sin esto, guardar la config no daba señal alguna: un token sin permisos
-// autentica igual, la API responde 200 con listas vacías (PVE filtra, no
-// rechaza) y la integración se queda muda — indistinguible de un cluster
-// sin invitados. El resultado dice también QUÉ falta cuando es eso.
+// Without this, saving the config gave no feedback at all: a token with no
+// permissions authenticates just the same, the API answers 200 with empty
+// lists (PVE filters, it does not reject) and the integration goes quiet --
+// indistinguishable from a cluster with no guests. The result also says
+// WHAT is missing when that is the case.
 //
-// Body opcional: {id} prueba la instancia guardada; {url, tokenId, secret}
-// prueba lo que el usuario acaba de teclear sin guardarlo. Un secret vacío
-// reutiliza el almacenado, igual que el PUT.
+// Optional body: {id} tests the stored instance; {url, tokenId, secret}
+// tests what the user has just typed without saving it. An empty secret
+// reuses the stored one, exactly as the PUT does.
 func (s *server) handleTestProxmoxConfig(w http.ResponseWriter, r *http.Request) {
 	var in proxmoxInstanceInput
 	_ = readJSONBody(w, r, &in) // cuerpo opcional
@@ -692,8 +693,8 @@ func (s *server) handleTestProxmoxConfig(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid_input", "faltan url, tokenId o secret")
 		return
 	}
-	// Un fallo es un RESULTADO, no un error HTTP: el formulario tiene que
-	// poder enseñar lo que contestó Proxmox.
+	// A failure is a RESULT, not an HTTP error: the form has to be able to
+	// show what Proxmox answered.
 	res, err := pve.NewClient(cfg).Test(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})

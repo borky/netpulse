@@ -262,16 +262,15 @@ type Device struct {
 	// AttachTo: hub del que cuelga en el mapa (router por defecto; id de
 	// DistributionNode inferido o de otro Device — hipervisor/switch).
 	AttachTo string `json:"attachTo,omitempty"`
-	// SpeedMbps: velocidad negociada de la boca donde está enchufado, si la
-	// conocemos (boca del switch vía controlador). 0 = desconocida.
+	// SpeedMbps: speed negotiated on the port it is plugged into, when we
+	// know it (the switch port, via the controller). 0 = unknown.
 	SpeedMbps int `json:"speedMbps,omitempty"`
 	// Infra: rol de infraestructura sellado server-side (Fase 4). La app NO
 	// infiere: pinta badge si viene. "hypervisor" (host Proxmox/VMware/…),
-	// "ct" (contenedor anidado bajo hipervisor), "vm" (máquina virtual, que
-	// solo el inventario del hipervisor distingue de un contenedor),
-	// "managed-switch" (switch con gestión identificado por LLDP — hoy
-	// switch-netgear), "ap" (punto de acceso gestionado, p. ej. reportado
-	// por el controlador UniFi).
+	// "ct" (container nested under a hypervisor), "vm" (virtual machine,
+	// which only the hypervisor inventory can tell from a container),
+	// "managed-switch" (a managed switch identified by LLDP), "ap" (a
+	// managed access point, e.g. reported by the UniFi controller).
 	Infra string `json:"infra,omitempty"` // "hypervisor"|"ct"|"vm"|"managed-switch"|"ap"
 	// --- mDNS/SSDP fingerprinting (#338) ---
 	// MdnsServices: mDNS service types advertised by this device (from umdns).
@@ -346,10 +345,10 @@ type DistributionNode struct {
 	// existe como Device Y como nodo managed, sin duplicar el render).
 	Mac  string    `json:"mac,omitempty"`
 	Lldp *LldpInfo `json:"lldp,omitempty"`
-	// SpeedMbps: velocidad negociada del enlace por el que cuelga, cuando
-	// alguien la sabe de verdad (hoy: la boca del switch que reporta el
-	// controlador UniFi). 0 = no se conoce, y la UI escribe "—" en vez de
-	// inventarse un "1 Gbps" que nadie ha medido.
+	// SpeedMbps: speed negotiated on the link it hangs off, when somebody
+	// actually knows it (today: the switch port the UniFi controller
+	// reports). 0 = unknown, and the UI writes "—" instead of inventing a
+	// "1 Gbps" nobody measured.
 	SpeedMbps int `json:"speedMbps,omitempty"`
 	// Role: what the managed box actually is, "switch" or "ap". Kind stays
 	// "managed" for both because it drives the layout (a box known by MAC

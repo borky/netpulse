@@ -684,7 +684,7 @@ func radiosToAdapter(in []probe.Radio) []Radio {
 }
 
 // GetArp devuelve la tabla ARP del equipo (MAC→IP, #377). Fuente barata
-// para resolver IPs cuando el DHCP no es local.
+// to resolve IPs when DHCP does not run on the probed box.
 //
 // Reads `ip neigh` so the state of each entry comes with it, and returns the
 // MACs the kernel remembers without confirming (stale): their address is

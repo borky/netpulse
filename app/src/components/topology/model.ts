@@ -1435,11 +1435,11 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
 
   // Tabla de backhauls (topology.md §④)
   /**
-   * Nombre del equipo del que cuelga un dispositivo, resuelto por el mismo
-   * hubOf que usa el mapa: un nodo de distribución (switch, AP, hipervisor),
-   * otro dispositivo que hace de hub, o el router. Nada de asumir el router:
-   * el host Proxmox cuelga del switch y la tabla lo anunciaba colgando del
-   * OpenWrt, que es el enlace de más arriba, no el suyo.
+   * Name of the box a device hangs off, resolved with the same hubOf the
+   * map uses: a distribution node (switch, AP, hypervisor), another device
+   * acting as a hub, or the router. Never assume the router: the Proxmox
+   * host hangs off the switch, and the table announced it hanging off the
+   * OpenWrt, which is the link above it, not its own.
    */
   const hubNameOf = (d: Device): string => {
     const id = hubOf(d)
@@ -1450,11 +1450,10 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
     return deviceById.get(id)?.name ?? id
   }
   /**
-   * Velocidad de un enlace, o "—" si nadie la ha medido. La tabla escribía
-   * "1 Gbps" en toda fila de distribución y "866 Mbps PHY · −58 dBm" en un
-   * uplink wifi sin tener el dato de ninguno de los dos: números inventados
-   * con aspecto de medida. Hoy solo el controlador reporta velocidad real
-   * (la negociada en su boca) y solo eso se pinta.
+   * Speed of a link, or "—" when nobody has measured it. The table used to
+   * print "1 Gbps" on every distribution row and "866 Mbps PHY · −58 dBm"
+   * on a wifi uplink without having either figure: invented numbers that
+   * look like readings. Only measured speeds are printed now.
    */
   const linkSpeed = (mbps?: number): string => {
     if (!mbps || mbps <= 0) return '—'
@@ -1474,9 +1473,9 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
     backhauls.push({
       id: `uplink-${node.id}`, a: gatewayNode?.router.name ?? '', b: node.router.name, kind: 'uplink',
       type: isWifi ? 'topology.links.wifiUplink' : 'common.cable',
-      // El contrato no trae ni tasa PHY ni señal del backhaul de un AP, así
-      // que no se afirma ninguna. El tono sí es información real: un enlace
-      // por wifi merece mirarse más que uno por cable.
+      // The contract carries neither the PHY rate nor the signal of an
+      // AP's backhaul, so neither is claimed. The tone IS real information:
+      // a wireless backhaul is worth a second look, a cabled one is not.
       speed: '—',
       signal: '—',
       tone: isWifi ? 'warn' : 'ok',
@@ -1494,8 +1493,8 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
     const a = parent ? (parent.node.name ?? parent.node.ip ?? '') : (rn?.router.name ?? '')
     const spark = rn?.router.sparkline ?? []
     if (dv.node.kind === 'managed') {
-      // La procedencia es LLDP solo si el router vio el anuncio; un AP que
-      // solo conoce el controlador llevaba "LLDP" y el tipo "switch".
+      // The provenance is LLDP only if the router saw the announcement; an
+      // AP only the controller knows carried "LLDP" and the type "switch".
       const via = dv.node.lldp ? 'LLDP' : (dv.node.source ? dv.node.source.toUpperCase() : '')
       backhauls.push({
         id: `dist-${dv.id}`, a,
@@ -1520,9 +1519,9 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
   for (const dn of distributionNodes.filter((n) => n.kind === 'hypervisor' && n.hostDeviceId)) {
     const host = deviceById.get(dn.hostDeviceId!)
     if (!host) continue
-    // La boca la manda el DEVICE, no el nodo: el nodo se crea con lo que el
-    // host tenía al sellar Proxmox y los sellos posteriores (UniFi) afinan
-    // la del device — nombre de boca incluido.
+    // The port comes from the DEVICE, not the node: the node is built with
+    // whatever the host had when the Proxmox seal ran, and the later seals
+    // (UniFi) refine the device's own port, port name included.
     const port = host.portLabel ?? host.port ?? dn.portLabel ?? dn.port
     backhauls.push({
       id: `wired-${host.id}`, a: hubNameOf(host),
