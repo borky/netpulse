@@ -99,16 +99,20 @@ type MQTTData struct {
 
 // SystemData: salud del equipo + tráfico + latencias.
 type SystemData struct {
-	SysInfo   *SysInfo   `json:"sysinfo,omitempty"`
-	Board     *BoardInfo `json:"board,omitempty"`
-	CPU       *int       `json:"cpu"`  // null en la primera muestra (delta /proc/stat)
-	Temp      *int       `json:"temp"` // null si no hay thermal zone
-	RxBps     *float64   `json:"rxBps"`
-	TxBps     *float64   `json:"txBps"`
-	LatencyMs *float64   `json:"latencyMs"`           // gateway: ping WAN; AP: ping al gateway
-	LossPct   *float64   `json:"lossPct"`             // solo gateway (ping WAN)
-	Backhaul  string     `json:"backhaul,omitempty"`  // "cable"|"wifi" (ausente = desconocido)
-	BridgeMAC string     `json:"bridgeMac,omitempty"` // MAC de br-lan (uplinks/topología)
+	SysInfo *SysInfo   `json:"sysinfo,omitempty"`
+	Board   *BoardInfo `json:"board,omitempty"`
+	CPU     *int       `json:"cpu"`  // null en la primera muestra (delta /proc/stat)
+	Temp    *int       `json:"temp"` // null si no hay thermal zone
+	// TempSource says what the reading measures when it does NOT come from a
+	// SoC thermal zone: the hwmon chip that answered ("ath10k_hwmon" = a WiFi
+	// radio). Empty = the board's own thermal zone, i.e. the usual meaning.
+	TempSource string   `json:"tempSource,omitempty"`
+	RxBps      *float64 `json:"rxBps"`
+	TxBps      *float64 `json:"txBps"`
+	LatencyMs  *float64 `json:"latencyMs"`           // gateway: ping WAN; AP: ping al gateway
+	LossPct    *float64 `json:"lossPct"`             // solo gateway (ping WAN)
+	Backhaul   string   `json:"backhaul,omitempty"`  // "cable"|"wifi" (ausente = desconocido)
+	BridgeMAC  string   `json:"bridgeMac,omitempty"` // MAC de br-lan (uplinks/topología)
 	// Flash and FirmwareAvailable let an external pusher report storage and
 	// pending firmware without a vendor-specific server adapter. Both are
 	// optional and remain empty when the source does not expose them.
