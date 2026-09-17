@@ -3138,7 +3138,10 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 		return out
 	}
 	clients := []Device{}
-	detDevices, _ := inferTopology(polledAll, l.buildDevices(polledAll))
+	detDevices, detDists := inferTopology(polledAll, l.buildDevices(polledAll))
+	// Mismo sello que en las otras rutas, con sus distnodes para que los ids
+	// de enganche coincidan con los del overview.
+	l.sealUniFiInfra(detDevices, detDists, l.gatewayID())
 	for _, d := range detDevices {
 		if d.RouterID == id {
 			clients = append(clients, d)
@@ -3239,13 +3242,20 @@ func (l *Live) GetDevices(context.Context) []Device {
 	// (que sobreescribe attachTo con ground truth del cluster).
 	detailNowMs := time.Now().UnixMilli()
 	detailMemo := l.updateFdbMemo(polled, detailNowMs)
-	devices, _ := inferTopology(
+	devices, devDists := inferTopology(
 		overlayStickyFdb(polled, detailMemo, detailNowMs),
 		l.buildDevices(polled),
 	)
 	// #561: sellado de infraestructura con el inventario PVE (si configurado).
 	// El detalle no consume distnodes, pero el sellado de devices sí corre.
-	l.sealProxmoxInfra(devices, nil)
+	l.sealProxmoxInfra(devices, devDists)
+	// Igual con UniFi: esta ruta reconstruye los devices desde cero, así que
+	// sin este sello la lista de dispositivos (y el mapa, que la consume)
+	// pierde la boca de switch y el AP de cada cliente aunque el overview
+	// sí los tenga. Se le pasan los distnodes REALES (no nil): el sello
+	// engancha cada cliente al id del nodo, y con nil inventaría ids nuevos
+	// que no coinciden con los del overview.
+	l.sealUniFiInfra(devices, devDists, l.gatewayID())
 	return devices
 }
 

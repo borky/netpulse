@@ -86,6 +86,17 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 	return inv
 }
 
+// gatewayID: the id of the router marked as gateway, or "" when there is
+// none. The paths that rebuild devices on their own need it to place nodes.
+func (l *Live) gatewayID() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.gatewayCfg == nil {
+		return ""
+	}
+	return l.gatewayCfg.ID
+}
+
 // sealUniFiInfra applies the controller's inventory over what the poller
 // inferred. See applyUniFiInfra for the rules.
 func (l *Live) sealUniFiInfra(devices []Device, dists []DistributionNode, gatewayID string) []DistributionNode {
