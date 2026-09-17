@@ -1773,9 +1773,9 @@ interface PveInstanceCfg {
 }
 
 /** Configuración del controller UniFi: la mitad de la topología que el router
- *  no puede ver (qué boca de switch y qué AP tiene cada cliente). La password
- *  nunca vuelve del server: si ya hay una guardada, el campo queda vacío y en
- *  blanco se conserva. */
+ *  cannot see (which switch port and which AP each client sits on). The
+ *  password never comes back from the server: when one is stored the field
+ *  stays empty, and leaving it blank keeps it. */
 function UniFiManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => void }) {
   const { t } = useTranslation()
   const [cfg, setCfg] = useState({ url: '', username: '', site: 'default', insecure: true })
@@ -1844,7 +1844,7 @@ function UniFiManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => voi
   }
 
   /** Prueba contra el controller SIN guardar: responde qué encontró o el
-   *  error del propio controller, que es lo que hace falta ver aquí. */
+   *  the controller's own error, which is what needs to be seen here. */
   const test = async () => {
     if (busy) return
     setBusy(true)

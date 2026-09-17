@@ -88,17 +88,17 @@ var iotVendors = []string{
 	"qingping",
 	"shenzhen",
 	"tasmota",
-	// Electrodomésticos y clima conectados: no son "el IoT de siempre" (un
-	// enchufe, una bombilla), pero para la topología son lo mismo — un
-	// cacharro de la casa que habla por wifi.
+	// Connected appliances and climate gear: not "classic" IoT (a plug, a
+	// bulb), but the same thing as far as the topology is concerned -- a
+	// household device that talks over wifi.
 	"wiz",     // bombillas WiZ (Signify, OUI propio)
 	"gree",    // aire acondicionado
 	"hausger", // BSH Hausgeräte: horno/lavavajillas Bosch y Siemens
 }
 
-// cameraVendors: fabricantes cuyo catálogo es videovigilancia. Un OUI suyo
-// es una cámara o un grabador, no un cacharro genérico: hay un tipo propio
-// (con su icono) y decir "iot" sería perder información que sí tenemos.
+// cameraVendors: manufacturers whose catalogue is surveillance gear. One of
+// their OUIs is a camera or a recorder, not a generic gadget: there is a
+// type of its own for it, and saying "iot" would throw away what we know.
 var cameraVendors = []string{
 	"reolink",
 	"hikvision",
