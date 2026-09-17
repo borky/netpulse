@@ -40,6 +40,13 @@ func (s *server) registerConfigRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/config/adguard", auth.RequireAdmin(http.HandlerFunc(s.handleGetAdguardConfig)))
 	mux.Handle("PUT /api/config/adguard", auth.RequireAdmin(http.HandlerFunc(s.handlePutAdguardConfig)))
 	mux.Handle("DELETE /api/config/adguard", auth.RequireAdmin(http.HandlerFunc(s.handleDeleteAdguardConfig)))
+	// UniFi (topology beyond the router): same shape as proxmox — the
+	// password never comes back out, and a test endpoint answers while the
+	// user still has the form open.
+	mux.Handle("GET /api/config/unifi", auth.RequireAdmin(http.HandlerFunc(s.handleGetUniFiConfig)))
+	mux.Handle("PUT /api/config/unifi", auth.RequireAdmin(http.HandlerFunc(s.handlePutUniFiConfig)))
+	mux.Handle("DELETE /api/config/unifi", auth.RequireAdmin(http.HandlerFunc(s.handleDeleteUniFiConfig)))
+	mux.Handle("POST /api/config/unifi/test", auth.RequireAdmin(http.HandlerFunc(s.handleTestUniFiConfig)))
 	mux.Handle("GET /api/config/proxmox", auth.RequireAdmin(http.HandlerFunc(s.handleGetProxmoxConfig)))
 	mux.Handle("PUT /api/config/proxmox", auth.RequireAdmin(http.HandlerFunc(s.handlePutProxmoxConfig)))
 	mux.Handle("DELETE /api/config/proxmox/{id}", auth.RequireAdmin(http.HandlerFunc(s.handleDeleteProxmoxConfig)))
