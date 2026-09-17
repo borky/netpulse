@@ -161,3 +161,26 @@ func TestApplyUniFiInfraMarksReportedClientsOnline(t *testing.T) {
 		t.Fatalf("a device outside the controller was touched: %+v", devices[2])
 	}
 }
+
+// A container the Proxmox seal already placed under its hypervisor: the
+// controller sees its MAC on a switch port, but that port is the HOST's
+// cable. Re-parenting it here hung the guests off the switch and undid the
+// nesting the PVE inventory had got right.
+func TestApplyUniFiInfraLeavesContainersOnTheirHypervisor(t *testing.T) {
+	devices := []Device{
+		{MAC: "02:00:00:00:00:01", Name: "storage", Infra: "ct",
+			AttachTo: "02-00-00-00-00-40", Online: false},
+	}
+	applyUniFiInfra(devices, nil, testInventory(), "gateway")
+
+	if devices[0].AttachTo != "02-00-00-00-00-40" {
+		t.Fatalf("a container was re-parented onto the switch: %+v", devices[0])
+	}
+	if devices[0].Port != "" || devices[0].PortLabel != "" {
+		t.Fatalf("a guest has no port of its own: %+v", devices[0])
+	}
+	// Presence is still real evidence: the controller sees it talking.
+	if !devices[0].Online {
+		t.Fatalf("online: %+v", devices[0])
+	}
+}
