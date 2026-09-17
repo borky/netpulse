@@ -128,3 +128,22 @@ func TestApplyUniFiInfraIsANoOpWithoutInventory(t *testing.T) {
 		}
 	}
 }
+
+// A station the controller reports is connected: the map only draws online
+// devices, so leaving it offline is what left the APs surrounded by nothing.
+func TestApplyUniFiInfraMarksReportedClientsOnline(t *testing.T) {
+	devices := []Device{
+		{MAC: "02:00:00:00:00:01", Name: "desktop", Online: false},
+		{MAC: "02:00:00:00:00:02", Name: "phone", Online: false},
+		{MAC: "02:00:00:00:00:77", Name: "unknown to the controller", Online: false},
+	}
+	applyUniFiInfra(devices, nil, testInventory(), "gateway")
+
+	if !devices[0].Online || !devices[1].Online {
+		t.Fatalf("clients the controller reports must be online: %+v", devices[:2])
+	}
+	// One it knows nothing about is left exactly as it was.
+	if devices[2].Online {
+		t.Fatalf("a device outside the controller was touched: %+v", devices[2])
+	}
+}
