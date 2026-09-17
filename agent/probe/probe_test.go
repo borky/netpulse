@@ -1286,3 +1286,25 @@ func TestParseMdnsHosts(t *testing.T) {
 		t.Fatalf("broken json must not panic: %+v", got)
 	}
 }
+
+func TestParseTempHwmon(t *testing.T) {
+	// CmdTempHwmon prints "<millidegrees> <chip>".
+	temp, chip := ParseTempHwmon("53000 ath10k_hwmon\n")
+	if temp == nil || *temp != 53 || chip != "ath10k_hwmon" {
+		t.Fatalf("temp=%v chip=%q", temp, chip)
+	}
+	// Rounding follows ParseTempC: 52.6 °C → 53.
+	if temp, _ := ParseTempHwmon("52600 ath10k_hwmon"); temp == nil || *temp != 53 {
+		t.Fatalf("rounding: %v", temp)
+	}
+	// A sensor with no chip name still gives a reading.
+	if temp, chip := ParseTempHwmon("41000"); temp == nil || *temp != 41 || chip != "" {
+		t.Fatalf("no chip: %v %q", temp, chip)
+	}
+	// Nothing answered, or garbage: no reading, no source.
+	for _, in := range []string{"", "  ", "read error"} {
+		if temp, chip := ParseTempHwmon(in); temp != nil || chip != "" {
+			t.Fatalf("input %q: %v %q", in, temp, chip)
+		}
+	}
+}

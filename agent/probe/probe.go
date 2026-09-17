@@ -27,7 +27,14 @@ import (
 const (
 	CmdProcStat = "grep '^cpu ' /proc/stat"
 	CmdTemp     = `for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] && cat "$f" && break; done`
-	CmdNetDev   = "cat /proc/net/dev | tail -n +3"
+	// CmdTempHwmon: fallback for boards with no thermal zone at all (the
+	// ipq40xx builds expose none). Prints "<millidegrees> <chip>" for the
+	// first hwmon sensor that answers. On an ath10k board that chip is the
+	// WiFi radio, NOT the SoC — hence the chip name travels with the value,
+	// so nothing downstream can pass it off as a CPU temperature. Radios
+	// only answer while they are up, so unreadable sensors are skipped.
+	CmdTempHwmon = `for f in /sys/class/hwmon/hwmon*/temp*_input; do v=$(cat "$f" 2>/dev/null) || continue; [ -n "$v" ] && echo "$v $(cat "$(dirname "$f")/name" 2>/dev/null)" && break; done`
+	CmdNetDev    = "cat /proc/net/dev | tail -n +3"
 	// CmdPingWan: latencia + pérdida a internet (solo gateway). %s = target.
 	CmdPingWan = "ping -c 3 -W 2 %s 2>/dev/null | tail -2"
 	// CmdPingGateway: ping corto al gateway desde un AP. %s = host gateway.
@@ -370,6 +377,25 @@ func CPUPercent(prev, cur CPUSample) *int {
 }
 
 // ParseTempC: °C del primer thermal zone (nil si la salida no es un entero).
+// ParseTempHwmon parses CmdTempHwmon's "<millidegrees> <chip>" into degrees
+// and the chip that measured them ("ath10k_hwmon" and friends). Returns nil
+// when no sensor answered.
+func ParseTempHwmon(out string) (*int, string) {
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) == 0 {
+		return nil, ""
+	}
+	temp := ParseTempC(fields[0])
+	if temp == nil {
+		return nil, ""
+	}
+	chip := ""
+	if len(fields) > 1 {
+		chip = fields[1]
+	}
+	return temp, chip
+}
+
 func ParseTempC(out string) *int {
 	milli, err := strconv.Atoi(strings.TrimSpace(out))
 	if err != nil {

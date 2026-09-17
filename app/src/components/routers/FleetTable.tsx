@@ -12,7 +12,7 @@ import { MetricBar } from '@/components/MetricBar'
 import { StatusPill } from '@/components/StatusPill'
 import { AgentBadge } from '@/components/routers/AgentBadge'
 import { getRouterExtras, uptimeHours } from '@/components/routers/routerExtras'
-import { fmtTemp, useTempUnit } from '@/lib/temperature'
+import { tempSourceTag, fmtTemp, useTempUnit } from '@/lib/temperature'
 import { cn } from '@/lib/utils'
 
 const STATUS_ORDER: Record<Router['status'], number> = { online: 0, warn: 1, offline: 2 }
@@ -74,7 +74,7 @@ function TempCell({ router }: { router: Router }) {
       )}
       title={hot ? t('routers.tempThreshold', { value: fmtTemp(router.tempThreshold ?? 65, tempUnit) }) : undefined}
     >
-      {fmtTemp(router.temp, tempUnit)}
+      {fmtTemp(router.temp, tempUnit) + tempSourceTag(router.tempSource)}
     </span>
   )
 }

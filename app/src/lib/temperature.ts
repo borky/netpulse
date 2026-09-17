@@ -49,6 +49,19 @@ export function fmtTemp(celsius: number | null, unit: TempUnit, decimals = 0): s
   return `${fmtEs(rounded, decimals)} ${tempUnitSymbol(unit)}`
 }
 
+/**
+ * Short tag for where a temperature came from, to append to the reading.
+ * A board with no thermal zone of its own falls back to an hwmon chip: on
+ * ath10k/ath11k/mt76 hardware that chip is the WiFi radio, which idles
+ * warmer than a SoC. Without the tag a healthy router reads as overheating.
+ * Empty string for a real board sensor, so callers can append it blindly.
+ */
+export function tempSourceTag(source?: string): string {
+  if (!source) return ''
+  if (/ath\d+k|mt79|wifi|radio/i.test(source)) return ' (radio)'
+  return ` (${source.replace(/_hwmon$/, '')})`
+}
+
 /** Escribe la unidad y notifica a los componentes suscritos. */
 export function setTempUnit(unit: TempUnit): void {
   try {

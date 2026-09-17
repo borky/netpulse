@@ -91,16 +91,17 @@ func pickGatewayCfg(polled map[string]*routerPolled) *RouterConfig {
 
 // routerPolled es el sondeo de un tick de un router.
 type routerPolled struct {
-	cfg       RouterConfig
-	client    *OpenWrtClient
-	sysInfo   *SysInfo
-	board     *BoardInfo
-	cpu       int
-	ram       int
-	temp      int
-	uptimeSec float64
-	net       *NetDevBps
-	leases    []DhcpLease
+	cfg        RouterConfig
+	client     *OpenWrtClient
+	sysInfo    *SysInfo
+	board      *BoardInfo
+	cpu        int
+	ram        int
+	temp       int
+	tempSource string
+	uptimeSec  float64
+	net        *NetDevBps
+	leases     []DhcpLease
 	// reservations: the `config host` entries of /etc/config/dhcp. They name
 	// clients that never take a lease because their address is fixed on the
 	// device itself.
@@ -1150,7 +1151,7 @@ func (l *Live) buildRouter(p *routerPolled, history []histPoint) Router {
 	r := Router{
 		ID: p.cfg.ID, Name: name, Model: model, ModelShort: model,
 		IP: p.cfg.Host, Status: status, Health: health,
-		CPU: iptr(p.cpu), RAM: iptr(p.ram), Temp: iptr(p.temp),
+		CPU: iptr(p.cpu), RAM: iptr(p.ram), Temp: iptr(p.temp), TempSource: p.tempSource,
 		Uptime: fmtUptime(p.uptimeSec), Clients: len(p.leases),
 		Sparkline: sparkline, TempThreshold: thr,
 	}

@@ -14,7 +14,7 @@ import { AgentBadge } from '@/components/routers/AgentBadge'
 import { useAgentFor } from '@/hooks/useAgentFor'
 import { getRouterExtras } from '@/components/routers/routerExtras'
 import { EMPTY_EXTRAS, useNetPulse } from '@/data/DataProvider'
-import { fmtTemp, useTempUnit } from '@/lib/temperature'
+import { tempSourceTag, fmtTemp, useTempUnit } from '@/lib/temperature'
 import { cn } from '@/lib/utils'
 
 function MetricRow({
@@ -254,7 +254,7 @@ export function FleetCard({ router, index = 0, refreshKey = 0 }: FleetCardProps)
               <MetricRow
                 icon={Thermometer}
                 label={t('common.temperature')}
-                value={fmtTemp(router.temp, tempUnit)}
+                value={fmtTemp(router.temp, tempUnit) + tempSourceTag(router.tempSource)}
                 pct={Math.min(100, ((router.temp ?? 0) / 90) * 100)}
                 hot={router.hotMetric === 'temp'}
                 title={router.hotMetric === 'temp' ? t('routers.tempThreshold', { value: fmtTemp(router.tempThreshold ?? 65, tempUnit) }) : undefined}
