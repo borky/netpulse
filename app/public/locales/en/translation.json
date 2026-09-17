@@ -1686,6 +1686,25 @@
       "propagateEmpty": "There are no NetGrip routers in the fleet to propagate to.",
       "running": "publishing",
       "notRunning": "stopped"
+    },
+    "unifi": {
+      "title": "UniFi controller",
+      "caption": "Which switch port and which AP every client sits on",
+      "hint": "Reads a UniFi controller read-only, with a local viewer account. A UniFi switch reports its neighbours only to its controller and UniFi dropped SNMP, so without this the map stops at the switch: the controller supplies the port each wired client uses, the AP each station is associated to, and where the APs themselves plug in.",
+      "url": "Controller URL",
+      "username": "User (read-only)",
+      "password": "Password",
+      "passwordKeep": "Stored — leave blank to keep it",
+      "site": "Site",
+      "insecure": "Accept the self-signed certificate",
+      "save": "Save",
+      "saving": "Saving…",
+      "test": "Test",
+      "testOk": "Connected: {{switches}} switch(es), {{aps}} AP(s), {{clients}} clients",
+      "disable": "Disable",
+      "configured": "Configured",
+      "notConfigured": "Not configured",
+      "errorGeneric": "Could not reach the controller"
     }
   },
   "statcard": {

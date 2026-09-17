@@ -1686,6 +1686,25 @@
       "propagateEmpty": "No hay routers NetGrip en la flota a los que propagar.",
       "running": "publicando",
       "notRunning": "detenido"
+    },
+    "unifi": {
+      "title": "Controller UniFi",
+      "caption": "En qué boca de switch y en qué AP está cada cliente",
+      "hint": "Lee un controller UniFi en solo lectura, con una cuenta local de invitado. Un switch UniFi solo informa de sus vecinos a su controller y UniFi retiró SNMP, así que sin esto el mapa se queda en el switch: el controller aporta la boca de cada cliente cableado, el AP de cada estación y dónde se enchufan los propios APs.",
+      "url": "URL del controller",
+      "username": "Usuario (solo lectura)",
+      "password": "Contraseña",
+      "passwordKeep": "Guardada — en blanco se conserva",
+      "site": "Sitio",
+      "insecure": "Aceptar el certificado autofirmado",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "test": "Probar",
+      "testOk": "Conectado: {{switches}} switch(es), {{aps}} AP(s), {{clients}} clientes",
+      "disable": "Desactivar",
+      "configured": "Configurado",
+      "notConfigured": "Sin configurar",
+      "errorGeneric": "No se pudo conectar con el controller"
     }
   },
   "statcard": {

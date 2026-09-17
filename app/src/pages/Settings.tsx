@@ -1696,6 +1696,216 @@ interface PveInstanceCfg {
   secret?: string
 }
 
+/** Configuración del controller UniFi: la mitad de la topología que el router
+ *  no puede ver (qué boca de switch y qué AP tiene cada cliente). La password
+ *  nunca vuelve del server: si ya hay una guardada, el campo queda vacío y en
+ *  blanco se conserva. */
+function UniFiManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => void }) {
+  const { t } = useTranslation()
+  const [cfg, setCfg] = useState({ url: '', username: '', site: 'default', insecure: true })
+  const [passwordSet, setPasswordSet] = useState(false)
+  const [password, setPassword] = useState('')
+  const [enabled, setEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [tested, setTested] = useState<string | null>(null)
+
+  const load = async () => {
+    try {
+      const res = await fetch('/api/config/unifi')
+      if (!res.ok) return
+      const j = (await res.json()) as {
+        url?: string; username?: string; site?: string; insecure?: boolean
+        passwordSet?: boolean; enabled?: boolean
+      }
+      setCfg({
+        url: j.url ?? '', username: j.username ?? '',
+        site: j.site || 'default', insecure: j.insecure ?? true,
+      })
+      setPasswordSet(Boolean(j.passwordSet))
+      setEnabled(Boolean(j.enabled))
+    } catch {
+      // sin servidor → no-op
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const body = () => ({
+    url: cfg.url.trim(),
+    username: cfg.username.trim(),
+    site: cfg.site.trim() || 'default',
+    insecure: cfg.insecure,
+    ...(password ? { password } : {}),
+  })
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    setTested(null)
+    try {
+      const res = await fetch('/api/config/unifi', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body()),
+      })
+      if (!res.ok) {
+        const b = (await res.json().catch(() => ({}))) as { message?: string }
+        throw new Error(b.message ?? `HTTP ${res.status}`)
+      }
+      setPassword('')
+      await load()
+      onSaved()
+    } catch (err) {
+      setError(String(err).replace(/^Error:\s*/, '') || t('settings.unifi.errorGeneric'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Prueba contra el controller SIN guardar: responde qué encontró o el
+   *  error del propio controller, que es lo que hace falta ver aquí. */
+  const test = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    setTested(null)
+    try {
+      const res = await fetch('/api/config/unifi/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body()),
+      })
+      const j = (await res.json().catch(() => ({}))) as {
+        ok?: boolean; switches?: number; aps?: number; clients?: number
+        error?: string; message?: string
+      }
+      if (!res.ok) throw new Error(j.message ?? `HTTP ${res.status}`)
+      if (!j.ok) throw new Error(j.error ?? t('settings.unifi.errorGeneric'))
+      setTested(
+        t('settings.unifi.testOk', {
+          switches: j.switches ?? 0, aps: j.aps ?? 0, clients: j.clients ?? 0,
+        }),
+      )
+    } catch (err) {
+      setError(String(err).replace(/^Error:\s*/, '') || t('settings.unifi.errorGeneric'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disable = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    setTested(null)
+    try {
+      const res = await fetch('/api/config/unifi', { method: 'DELETE' })
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`)
+      setPassword('')
+      await load()
+      onSaved()
+    } catch {
+      setError(t('settings.unifi.errorGeneric'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title={t('settings.unifi.title')} caption={t('settings.unifi.caption')} index={5} reduce={reduce}>
+      <p className="mb-3 text-caption text-text-secondary">{t('settings.unifi.hint')}</p>
+      <form onSubmit={(e) => void save(e)} className="space-y-2.5">
+        <input
+          type="url"
+          value={cfg.url}
+          onChange={(e) => setCfg({ ...cfg, url: e.target.value })}
+          placeholder="https://192.168.1.10:8443"
+          aria-label={t('settings.unifi.url')}
+          className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+        />
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <input
+            type="text"
+            value={cfg.username}
+            onChange={(e) => setCfg({ ...cfg, username: e.target.value })}
+            placeholder={t('settings.unifi.username')}
+            aria-label={t('settings.unifi.username')}
+            autoComplete="off"
+            className="rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={passwordSet ? t('settings.unifi.passwordKeep') : t('settings.unifi.password')}
+            aria-label={t('settings.unifi.password')}
+            autoComplete="new-password"
+            className="rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <input
+            type="text"
+            value={cfg.site}
+            onChange={(e) => setCfg({ ...cfg, site: e.target.value })}
+            placeholder="default"
+            aria-label={t('settings.unifi.site')}
+            className="rounded-lg border border-border bg-elevated px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+          />
+          <label className="flex items-center gap-2 text-caption text-text-secondary">
+            <input
+              type="checkbox"
+              checked={cfg.insecure}
+              onChange={(e) => setCfg({ ...cfg, insecure: e.target.checked })}
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            {t('settings.unifi.insecure')}
+          </label>
+        </div>
+
+        {error && <p className="text-caption text-danger">{error}</p>}
+        {tested && <p className="text-caption text-ok">{tested}</p>}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-canvas transition-opacity duration-150 hover:opacity-90 disabled:opacity-40"
+          >
+            {busy ? t('settings.unifi.saving') : t('settings.unifi.save')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void test()}
+            disabled={busy}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text-primary transition-colors duration-150 hover:border-accent/40 hover:text-accent disabled:opacity-40"
+          >
+            {t('settings.unifi.test')}
+          </button>
+          {enabled && (
+            <button
+              type="button"
+              onClick={() => void disable()}
+              disabled={busy}
+              className="rounded-lg border border-danger/30 px-3 py-2 text-sm font-semibold text-danger transition-colors duration-150 hover:border-danger/60 disabled:opacity-40"
+            >
+              {t('settings.unifi.disable')}
+            </button>
+          )}
+          <span className={`ml-auto text-caption ${enabled ? 'text-ok' : 'text-text-muted'}`}>
+            {enabled ? t('settings.unifi.configured') : t('settings.unifi.notConfigured')}
+          </span>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
 function ProxmoxManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => void }) {
   const { t } = useTranslation()
   const [instances, setInstances] = useState<PveInstanceCfg[]>([])
@@ -5050,6 +5260,14 @@ export default function Settings() {
         {!isDemo && auth?.role === 'admin' && (
           <div className="order-150">
             <ProxmoxManager reduce={reduce} onSaved={notify} />
+          </div>
+        )}
+
+        {/* UniFi: el controller sabe en qué boca de switch y en qué AP está
+            cada cliente — la mitad de la topología que el router no ve. */}
+        {!isDemo && auth?.role === 'admin' && (
+          <div className="order-155">
+            <UniFiManager reduce={reduce} onSaved={notify} />
           </div>
         )}
 
