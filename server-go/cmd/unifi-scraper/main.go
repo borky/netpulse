@@ -62,6 +62,9 @@ type Config struct {
 
 type state struct {
 	Tokens map[string]string `json:"tokens"` // slug -> agent token
+	// Routers remembers which slugs already have a router entry, to skip the
+	// create call on every round.
+	Routers map[string]bool `json:"routers"`
 }
 
 func main() {
@@ -119,7 +122,7 @@ func loadConfig(path string) (*Config, error) {
 }
 
 func loadState(path string) (*state, error) {
-	st := &state{Tokens: map[string]string{}}
+	st := &state{Tokens: map[string]string{}, Routers: map[string]bool{}}
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return st, nil
@@ -132,6 +135,9 @@ func loadState(path string) (*state, error) {
 	}
 	if st.Tokens == nil {
 		st.Tokens = map[string]string{}
+	}
+	if st.Routers == nil {
+		st.Routers = map[string]bool{}
 	}
 	return st, nil
 }
@@ -159,7 +165,10 @@ type unifiClient struct {
 
 // unifiDevice is the slice of /stat/device this tool needs.
 type unifiDevice struct {
-	MAC    string      `json:"mac"`
+	MAC string `json:"mac"`
+	// IP is the device's management address, needed to register it as a
+	// router: the server keys router entries by host and rejects duplicates.
+	IP     string      `json:"ip"`
 	Name   string      `json:"name"`
 	Model  string      `json:"model"`
 	Type   string      `json:"type"` // usw = switch, uap = access point, ugw/udm = gateway
@@ -313,8 +322,15 @@ func buildPayload(cfg *Config, d unifiDevice, stas []unifiSTA) probe.Payload {
 		Kind:     "external",
 		Interval: cfg.IntervalSec,
 	}
-	sys := &probe.SysInfo{Uptime: d.Uptime}
-	p.Data.System = &probe.SystemData{SysInfo: sys}
+	// Board.Hostname is how the server binds this push to a configured
+	// router when the router's generated id is not the slug: it matches the
+	// board hostname against the router's name/host/id (MatchRouter). The
+	// router entry is created with name = slug, so the two meet here.
+	board := &probe.BoardInfo{Model: d.Model, Hostname: p.Router, System: "UniFi"}
+	p.Data.System = &probe.SystemData{
+		SysInfo: &probe.SysInfo{Uptime: d.Uptime},
+		Board:   board,
+	}
 
 	switch d.Type {
 	case "usw":
@@ -415,6 +431,48 @@ func (n *netpulseClient) tokenFor(slug string) (string, error) {
 	return out.Token, nil
 }
 
+// ensureRouter makes sure a router entry exists for this device, because a
+// payload only reaches the UI once it is bound to one. The API generates the
+// id, so the entry is created with name = slug and the payload carries the
+// same string as its board hostname: that is the pairing MatchRouter falls
+// back to. Idempotent — an existing host answers 409 and that is a success.
+func (n *netpulseClient) ensureRouter(slug, host, typ string) error {
+	if host == "" {
+		return fmt.Errorf("device %q has no IP: cannot create its router entry", slug)
+	}
+	if n.st.Routers[slug] {
+		return nil
+	}
+	if n.cfg.NetPulse.APIToken == "" {
+		return fmt.Errorf("no netpulse.apiToken to create the router entry for %q", slug)
+	}
+	body, _ := json.Marshal(map[string]any{
+		"name": slug, "host": host, "type": typ, "agent_only": true,
+	})
+	req, err := http.NewRequest("POST", strings.TrimRight(n.cfg.NetPulse.URL, "/")+"/api/config/routers", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+n.cfg.NetPulse.APIToken)
+	res, err := n.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<16))
+	switch {
+	case res.StatusCode == http.StatusCreated:
+		log.Printf("registered router %q at %s", slug, host)
+	case res.StatusCode == http.StatusConflict:
+		// Already there from a previous run.
+	default:
+		return fmt.Errorf("create router %q: HTTP %d: %s", slug, res.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	n.st.Routers[slug] = true
+	return n.st.save(n.cfg.StatePath)
+}
+
 // push sends one payload, signed the way the ingest endpoint demands:
 // HMAC-SHA256 of the exact body, keyed by the agent token.
 func (n *netpulseClient) push(p probe.Payload) error {
@@ -474,6 +532,15 @@ func round(cfg *Config, st *state) error {
 			continue
 		}
 		p := buildPayload(cfg, d, stas)
+		routerType := "external"
+		if d.Type == "usw" {
+			routerType = "managed-switch"
+		}
+		if err := np.ensureRouter(p.Router, d.IP, routerType); err != nil {
+			log.Printf("router entry %s: %v", p.Router, err)
+			failed++
+			continue
+		}
 		if err := np.push(p); err != nil {
 			log.Printf("push %s (%s): %v", slugFor(d), d.Type, err)
 			failed++
