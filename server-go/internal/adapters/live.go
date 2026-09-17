@@ -331,8 +331,8 @@ type Live struct {
 	backhaulCache map[string]backhaulCacheEntry
 	lldpCache     map[string]lldpCacheEntry
 	wanInfoCache  map[string]wanInfoCacheEntry
-	// unifi: inventario cacheado del controller UniFi (sella la topología
-	// más allá del router; ver unifi.go).
+	// unifi: cached inventory of the UniFi controller (seals the topology
+	// past the router; see unifi.go).
 	unifi unifiCache
 
 	// Agentes nativos (Tier 2): último payload por slug + flag de caída
@@ -3034,10 +3034,11 @@ func (l *Live) buildOverview(ctx context.Context) (*Overview, error) {
 	// overrides manuales: un override explícito del usuario tiene prioridad
 	// sobre el sello.
 	distNodes = l.sealProxmoxInfra(devices, distNodes)
-	// Capa 4 UniFi: el controller sabe en qué boca del switch está cada
-	// cableado y en qué AP cada estación, que es justo lo que el router no
-	// ve (su LLDP llega al switch y se acaba). Va después del sello PVE y
-	// de los overrides: solo rellena lo que nadie definió antes.
+	// Layer 4, UniFi: the controller knows which switch port each wired
+	// client sits on and which AP each station is associated to, which is
+	// exactly what the router cannot see (its LLDP reaches the switch and
+	// stops). It runs after the PVE seal and the overrides: it only fills
+	// in what nobody defined before.
 	unifiGatewayID := ""
 	if gw != nil {
 		unifiGatewayID = gw.ID
@@ -3607,8 +3608,8 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 	}
 	clients := []Device{}
 	detDevices, detDists := inferTopology(polledAll, l.buildDevices(polledAll))
-	// Mismo sello que en las otras rutas, con sus distnodes para que los ids
-	// de enganche coincidan con los del overview.
+	// Same seal as the other paths, with its own dist nodes so the attach
+	// ids match the ones the overview produces.
 	l.sealUniFiInfra(detDevices, detDists, l.gatewayID())
 	// #954: first/last seen también en los clientes del detalle del router.
 	l.applyDeviceSeen(detDevices)
@@ -3753,12 +3754,12 @@ func (l *Live) attributedDevices() []Device {
 	// #561: sellado de infraestructura con el inventario PVE (si configurado).
 	// El detalle no consume distnodes, pero el sellado de devices sí corre.
 	l.sealProxmoxInfra(devices, devDists)
-	// Igual con UniFi: esta ruta reconstruye los devices desde cero, así que
-	// sin este sello la lista de dispositivos (y el mapa, que la consume)
-	// pierde la boca de switch y el AP de cada cliente aunque el overview
-	// sí los tenga. Se le pasan los distnodes REALES (no nil): el sello
-	// engancha cada cliente al id del nodo, y con nil inventaría ids nuevos
-	// que no coinciden con los del overview.
+	// Same for UniFi: this path rebuilds the devices from scratch, so
+	// without this seal the device list (and the map, which consumes it)
+	// loses each client's switch port and AP even though the overview has
+	// them. It is given the REAL dist nodes, not nil: the seal attaches
+	// each client to a node id, and with nil it would invent new ids that
+	// do not match the overview's.
 	l.sealUniFiInfra(devices, devDists, l.gatewayID())
 	// #954 + #1095: first/last seen persistente (device_seen) en el payload
 	// final. La escritura vivía SOLO en buildOverview: si por lo que fuera

@@ -1631,10 +1631,11 @@ function LabelText({
 // ---------------------------------------------------------------------------
 
 /**
- * Procedencia de una caja gestionada, para la pastilla del nodo y del
- * tooltip: LLDP si el router la vio anunciarse, y si no el integrador que la
- * reportó. Antes decía "LLDP" en todas, también en los AP que solo conoce el
- * controlador UniFi. "" = sin procedencia conocida → sin pastilla.
+ * Where a managed box came from, for the pill on the node and in the
+ * tooltip: LLDP if the router saw it announce itself, otherwise the
+ * integration that reported it. It used to say "LLDP" on all of them,
+ * including APs only the UniFi controller knows. "" = unknown provenance,
+ * and then no pill at all.
  */
 function distBadge(n: DistributionNode): string {
   if (n.lldp) return 'LLDP'
@@ -1671,8 +1672,8 @@ const DistNodeGroup = memo(function DistNodeGroup({
 }) {
   const { t } = useTranslation()
   const managed = dv.node.kind === 'managed'
-  // Un AP gestionado es un nodo managed más (misma geometría), pero no se
-  // dibuja ni se nombra como un switch.
+  // A managed AP is just another managed node (same geometry), but it is
+  // neither drawn nor named as a switch.
   const isAp = dv.node.role === 'ap'
   const NodeIcon = isAp ? Wifi : DEVICE_ICONS.switch
   const nodeLabel = dv.node.name ?? t(isAp ? 'topology.dist.ap' : 'topology.dist.managed')
