@@ -73,9 +73,19 @@ func TestApplyUniFiInfraPlacesClientsAndChainsAPs(t *testing.T) {
 	if devices[1].AttachTo != ap.ID || devices[1].Band != "5 GHz" {
 		t.Fatalf("wireless client: %+v", devices[1])
 	}
-	// The AP's own device entry is infrastructure, not a plain client.
-	if devices[2].Infra != "managed-switch" {
+	// The AP's own device entry is infrastructure, and specifically an access
+	// point: "managed-switch" put a "Managed switch · identified via LLDP"
+	// badge on a box that is neither.
+	if devices[2].Infra != "ap" {
 		t.Fatalf("ap device: %+v", devices[2])
+	}
+	// Same on the node: kind stays "managed" because it drives the layout,
+	// and role is what the box actually is.
+	if sw.Role != "switch" || ap.Role != "ap" {
+		t.Fatalf("roles: switch=%q ap=%q", sw.Role, ap.Role)
+	}
+	if ap.Kind != "managed" {
+		t.Fatalf("an AP node must stay managed for the layout: %+v", ap)
 	}
 }
 
@@ -103,6 +113,10 @@ func TestApplyUniFiInfraEnrichesAnExistingNode(t *testing.T) {
 	}
 	if out[0].Name != "Switch Rack" || out[0].Ip != "192.0.2.10" || out[0].Source != "unifi" {
 		t.Fatalf("not enriched: %+v", out[0])
+	}
+	// An LLDP node the seal recognises also learns what the box is.
+	if out[0].Role != "switch" {
+		t.Fatalf("role: %+v", out[0])
 	}
 	// The client count grows to what the controller sees, never shrinks.
 	if out[0].MacCount != 2 {
