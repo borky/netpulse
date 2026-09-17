@@ -291,6 +291,9 @@ type Live struct {
 	backhaulCache   map[string]backhaulCacheEntry
 	lldpCache       map[string]lldpCacheEntry
 	wanInfoCache    map[string]wanInfoCacheEntry
+	// unifi: inventario cacheado del controller UniFi (sella la topología
+	// más allá del router; ver unifi.go).
+	unifi unifiCache
 
 	// Agentes nativos (Tier 2): último payload por slug + flag de caída
 	// (degradado a SSH tras emitir la alerta, SPEC-AGENTE-PILOTO §1).
@@ -2636,6 +2639,15 @@ func (l *Live) buildOverview(ctx context.Context) (*Overview, error) {
 	// overrides manuales: un override explícito del usuario tiene prioridad
 	// sobre el sello.
 	distNodes = l.sealProxmoxInfra(devices, distNodes)
+	// Capa 4 UniFi: el controller sabe en qué boca del switch está cada
+	// cableado y en qué AP cada estación, que es justo lo que el router no
+	// ve (su LLDP llega al switch y se acaba). Va después del sello PVE y
+	// de los overrides: solo rellena lo que nadie definió antes.
+	unifiGatewayID := ""
+	if gw != nil {
+		unifiGatewayID = gw.ID
+	}
+	distNodes = l.sealUniFiInfra(devices, distNodes, unifiGatewayID)
 	// Supresión topológica (#332): actualizar grafo parent→child.
 	// Todos los no-gateway cuelgan del gateway.
 	l.mu.Lock()

@@ -14,7 +14,8 @@ const devicesJSON = `[
  {"mac":"02:00:00:00:00:10","ip":"192.0.2.10","name":"Switch Rack","model":"US8P60","type":"usw",
   "port_table":[{"port_idx":1,"name":"Uplink","up":true,"speed":1000},
                 {"port_idx":5,"name":"","up":false,"speed":0}]},
- {"mac":"02:00:00:00:00:20","ip":"192.0.2.20","name":"AP Living","model":"U7LR","type":"uap"},
+ {"mac":"02:00:00:00:00:20","ip":"192.0.2.20","name":"AP Living","model":"U7LR","type":"uap",
+  "uplink":{"uplink_mac":"02:00:00:00:00:10","uplink_remote_port":3}},
  {"mac":"02:00:00:00:00:30","ip":"192.0.2.30","name":"Gateway","model":"UGW3","type":"ugw"},
  {"mac":"02:00:00:00:00:40","ip":"192.0.2.40","name":"Camera NVR","model":"UVCNVR","type":"uvc"}
 ]`
@@ -45,6 +46,11 @@ func TestParseDevicesKeepsWhatMultiplexes(t *testing.T) {
 	}
 	if devices[1].Kind != "ap" || devices[2].Kind != "gateway" {
 		t.Fatalf("kinds: %+v", devices)
+	}
+	// The AP knows which switch port it hangs off: that is how it gets
+	// placed, since the router's LLDP only sees the first hop.
+	if devices[1].UplinkMAC != "02:00:00:00:00:10" || devices[1].UplinkPort != 3 {
+		t.Fatalf("uplink: %+v", devices[1])
 	}
 	// MACs are upper-cased, like everywhere else in the server.
 	if devices[1].MAC != "02:00:00:00:00:20" {

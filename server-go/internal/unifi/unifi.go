@@ -66,6 +66,11 @@ type Device struct {
 	// Kind: "switch" | "ap" | "gateway" | "" for anything else.
 	Kind  string `json:"kind"`
 	Ports []Port `json:"ports"`
+	// UplinkMAC/UplinkPort: the device this one hangs off and the port it
+	// occupies there. It is how an AP gets placed on its switch port — the
+	// router's LLDP only reaches the first hop.
+	UplinkMAC  string `json:"uplinkMac,omitempty"`
+	UplinkPort int    `json:"uplinkPort,omitempty"`
 }
 
 // Port is one socket of a switch.
@@ -214,6 +219,10 @@ type rawDevice struct {
 		Up    bool   `json:"up"`
 		Speed int    `json:"speed"`
 	} `json:"port_table"`
+	Uplink struct {
+		MAC        string `json:"uplink_mac"`
+		RemotePort int    `json:"uplink_remote_port"`
+	} `json:"uplink"`
 }
 
 type rawClient struct {
@@ -254,6 +263,9 @@ func ParseDevices(raw []byte) ([]Device, error) {
 			Name:  strings.TrimSpace(d.Name),
 			Model: d.Model,
 			Kind:  kind,
+		}
+		if d.Uplink.MAC != "" {
+			dev.UplinkMAC, dev.UplinkPort = strings.ToUpper(d.Uplink.MAC), d.Uplink.RemotePort
 		}
 		for _, p := range d.Ports {
 			dev.Ports = append(dev.Ports, Port{Idx: p.Idx, Name: strings.TrimSpace(p.Name), Up: p.Up, Speed: p.Speed})
