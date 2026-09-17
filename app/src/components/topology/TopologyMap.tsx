@@ -129,7 +129,7 @@ function TooltipCard({
   tip,
   touch,
   wan,
-  routerName,
+  portOwnerName,
   onTagDevice,
   onPointerEnter,
   onPointerLeave,
@@ -137,8 +137,9 @@ function TooltipCard({
   tip: TooltipState
   touch: boolean
   wan: WanInfo
-  /** nombre visible del router del que cuelga un nodo (D8: tooltip dist) */
-  routerName: (id: string) => string
+  /** nombre del equipo dueño del puerto de un nodo (D8: tooltip dist): el
+   *  padre de la cadena si lo hay, y si no el router */
+  portOwnerName: (node: DistributionNode) => string
   /** etiquetar el dispositivo desde la propia tarjeta (#656 feedback: más
    *  sencillo que introducir la MAC a mano) */
   onTagDevice?: (device: Device) => void
@@ -285,7 +286,7 @@ function TooltipCard({
             {[tip.node.ip, portName(tip.node.port, tip.node.portLabel)].filter(Boolean).join(' · ')}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <MiniStat label={t('topology.dist.port', { router: routerName(tip.node.routerId) })} value={portName(tip.node.port, tip.node.portLabel)} />
+            <MiniStat label={t('topology.dist.port', { owner: portOwnerName(tip.node) })} value={portName(tip.node.port, tip.node.portLabel)} />
             <MiniStat label={t('topology.dist.macs')} value={String(tip.node.macCount)} />
           </div>
           {tip.node.lldp && (
@@ -308,7 +309,7 @@ function TooltipCard({
           </div>
           <div className="mt-0.5 text-caption text-text-muted">{t('topology.dist.noIp')}</div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <MiniStat label={t('topology.dist.port', { router: routerName(tip.node.routerId) })} value={portName(tip.node.port, tip.node.portLabel)} />
+            <MiniStat label={t('topology.dist.port', { owner: portOwnerName(tip.node) })} value={portName(tip.node.port, tip.node.portLabel)} />
             <MiniStat label={t('topology.dist.macs')} value={String(tip.node.macCount)} />
           </div>
           <div className="mt-2 text-caption leading-snug text-text-secondary">
@@ -878,6 +879,19 @@ export function TopologyMap({
   const routerName = useCallback(
     (id: string) => routerNodes.find((n) => n.id === id)?.router.name ?? id,
     [routerNodes],
+  )
+  /**
+   * De quién es el puerto en el que cuelga un nodo. `port` es del PADRE, no
+   * del router: en una cadena (AP → switch → router) el puerto del AP es una
+   * boca del switch, y etiquetarlo "Puerto de <router>" señalaba un equipo
+   * que ni siquiera tiene esa boca.
+   */
+  const portOwnerName = useCallback(
+    (node: DistributionNode) => {
+      const parent = node.parent ? distNodes.find((n) => n.id === node.parent) : undefined
+      return parent ? (parent.node.name ?? parent.node.ip ?? t('topology.dist.managed')) : routerName(node.routerId)
+    },
+    [distNodes, routerName, t],
   )
   /** datos del tooltip de un chip: +N si es host hipervisor, host si es CT */
   const chipTip = useCallback(
@@ -1459,8 +1473,8 @@ export function TopologyMap({
           {distNodes.map((dv, i) =>
             dv.node.kind === 'managed' ? (
               <LabelText key={dv.id} x={dv.x} y={dv.y - 34} anchor="middle" delay={(2.15 + i * 0.03) * T}
-                reduce={reduce ?? false} title={dv.node.name ?? t('topology.dist.managed')}
-                sub={`${[dv.node.ip ?? 'LLDP', portName(dv.node.port, dv.node.portLabel)].join(' · ')}`}
+                reduce={reduce ?? false} title={dv.node.name ?? t(dv.node.role === 'ap' ? 'topology.dist.ap' : 'topology.dist.managed')}
+                sub={[dv.node.ip ?? distBadge(dv.node), portName(dv.node.port, dv.node.portLabel)].filter(Boolean).join(' · ')}
                 subColor={COLOR.accent} />
             ) : (
               <LabelText key={dv.id} x={dv.x} y={dv.y - 34} anchor="middle" delay={(2.15 + i * 0.03) * T}
@@ -1521,7 +1535,7 @@ export function TopologyMap({
           tip={tooltip}
           touch={!hoverCapable}
           wan={wan}
-          routerName={routerName}
+          portOwnerName={portOwnerName}
           onTagDevice={
             onTagDevice
               ? (device) => {
