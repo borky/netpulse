@@ -326,6 +326,13 @@ func NewHandler(d Deps) http.Handler {
 	// alerta first-seen de la MAC sin darle nombre (el alta reutiliza
 	// known-macs + override + reservation).
 	mux.Handle("POST /api/onboarding/dismiss", auth.RequireAdmin(http.HandlerFunc(s.handleOnboardingDismiss)))
+	// Presencia por cliente (#771): tramos de presencia fusionados y salud de
+	// roaming de la flota (lectura: mismo nivel que /api/devices/{mac}/traffic);
+	// la retención configurable de los eventos crudos es admin.
+	mux.HandleFunc("GET /api/devices/{mac}/presence", s.handleDevicePresence)
+	mux.HandleFunc("GET /api/presence/roaming", s.handlePresenceRoaming)
+	mux.Handle("GET /api/settings/presence", auth.RequireAdmin(http.HandlerFunc(s.handlePresenceSettingsGet)))
+	mux.Handle("PUT /api/settings/presence", auth.RequireAdmin(http.HandlerFunc(s.handlePresenceSettingsPut)))
 	// Reserva DHCP y bloqueo de dispositivo (issue #439).
 	mux.Handle("GET /api/devices/{mac}/reservation", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceReservationGet)))
 	mux.Handle("PUT /api/devices/{mac}/reservation", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceReservationPut)))
