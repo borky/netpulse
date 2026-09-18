@@ -1223,15 +1223,6 @@ export default function Devices() {
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [q, setQ] = useState(() => (searchParams.get('q') ?? '').trim().toLowerCase())
 
-  // Enlaces entrantes tipo /devices?q=<mac|ip|nombre> (p.ej. desde Puertos)
-  useEffect(() => {
-    const incoming = searchParams.get('q')
-    if (incoming !== null) {
-      setQuery(incoming)
-      setQ(incoming.trim().toLowerCase())
-    }
-  }, [searchParams])
-
   // Deep-link de onboarding (#772): /devices?intake=<mac> abre la tarjeta de
   // alta para ese dispositivo (la alerta "desconocido" lo enlaza).
   useEffect(() => {
@@ -1246,6 +1237,20 @@ export default function Devices() {
   const [groups, setGroups] = useState<FilterGroup[]>([])
   const [onlyOnline, setOnlyOnline] = useState(true)
   const [onlyWeak, setOnlyWeak] = useState(false)
+
+  // Enlaces entrantes tipo /devices?q=<mac|ip|nombre> (p.ej. desde Puertos)
+  useEffect(() => {
+    const incoming = searchParams.get('q')
+    if (incoming !== null) {
+      setQuery(incoming)
+      setQ(incoming.trim().toLowerCase())
+      // A deep link asks for one specific device, so the online-only default
+      // must not hide it: an alert about a device that has since dropped off
+      // would otherwise land on an empty list.
+      setOnlyOnline(false)
+    }
+  }, [searchParams])
+
   const weakCount = useMemo(
     () => allDevices.filter((d) => d.online && d.signalDbm !== null && d.signalDbm < -70).length,
     [allDevices],

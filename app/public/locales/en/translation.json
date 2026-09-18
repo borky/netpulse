@@ -41,6 +41,9 @@
     "unreadCount_one": "unread alert",
     "unreadCount_other": "unread alerts",
     "viewRouter": "View router",
+    "viewDevice": "Find this device",
+    "connectedTo": "Connected to",
+    "port": "Port",
     "wgPeerCaption": "WireGuard peer · wg0",
     "reason": {
       "temp": "temperature",
@@ -209,7 +212,8 @@
       },
       "unknown-device": {
         "title": "Unknown device",
-        "description": "{{mac}} connected to {{router}}"
+        "description": "{{mac}} connected to {{router}}",
+        "descriptionWhere": "{{mac}} · {{ip}} connected to {{where}}"
       },
       "wan-down": {
         "title": "Internet down",
