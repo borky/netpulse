@@ -47,8 +47,8 @@ type pveInventory struct {
 	nodes map[string]pveNode
 	// nodeIPs: "instance|node" → EVERY address known for that node. It is
 	// how the HOST device is matched by IP when NetPulse does not know it
-	// by name, which is the normal case: a node carries its cluster name
-	// while the LAN knows the machine as "proxmox", the name on its lease.
+	// by name, which is the normal case: a node is named in the cluster
+	// and the LAN knows the same machine by whatever its lease says.
 	//
 	// Several on purpose. A node has its management address (the bridge
 	// declared in its interfaces) and the one it announces to the cluster,
@@ -432,9 +432,9 @@ func singleNodeOf(resources []pve.Resource) bool {
 //
 // fallback is the type to use when the rules still say nothing. For a guest
 // or a hypervisor host, "servidor" is not a guess: a container is a machine
-// running a service, and what is left over are names no word list will ever
-// cover -- application names. Being a Proxmox guest is
-// the evidence; maintaining a dictionary of applications is not a strategy.
+// running a service, and what is left over are application names no word
+// list will ever cover. Being a Proxmox guest is the evidence; maintaining
+// a dictionary of applications is not a strategy.
 //
 // Called without the DHCP/LLDP fingerprints: if any of them had said
 // something the device would not be unknown. The only new thing is the name,
