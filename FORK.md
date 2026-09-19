@@ -72,6 +72,22 @@ GITHUB_REPO=borky/netpulse
 in its `.env`. Nothing in the source needs to change, which is why there is no
 fork patch for it.
 
+## The identifying-data hooks
+
+`.git/hooks/pre-commit` scans the staged diff and `.git/hooks/commit-msg`
+scans the message, both against the patterns in
+`~/.claude/no-identifying-data.txt`. A match blocks the commit and names the
+pattern that fired.
+
+This repository needed them: the agent fixtures carried the router model in
+their identifiers and comments long after the addresses in them had been
+replaced with documentation ranges. Scrubbing that out of 51 commits required
+rewriting the branch.
+
+Hooks are not versioned, so **a fresh clone has no protection until they are
+reinstalled**. Copy the three files into the new clone's `.git/hooks/` and
+mark them executable.
+
 ## The agent module
 
 `agent/` is its own Go module (`github.com/gnacho/netpulse/agent`) and the
