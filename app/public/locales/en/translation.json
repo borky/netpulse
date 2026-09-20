@@ -385,6 +385,8 @@
       "description": "Change this device's name and icon.",
       "action": "Edit",
       "name": "Name",
+      "nameHint": "Empty = automatic name (DHCP hostname)",
+      "type": "Type",
       "icon": "Icon",
       "auto": "Auto",
       "save": "Save",
@@ -419,6 +421,8 @@
     "showing": "Showing",
     "showingOf": "of {{total}}",
     "signalDbm": "Signal {{dbm}} dBm",
+    "sortBy": "Sort by",
+    "sortDefault": "Default (traffic)",
     "stats": {
       "adguardProtected": "Protected by AdGuard",
       "new7d": "New (7 days)",
