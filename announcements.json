@@ -1,6 +1,25 @@
 {
   "announcements": [
     {
+      "id": "github-stars-2026-09",
+      "urgency": "info",
+      "title": {
+        "es": "Ayúdanos a llegar a las 100 estrellas en GitHub",
+        "en": "Help us reach 100 stars on GitHub"
+      },
+      "body": {
+        "es": "NetPulse es libre (AGPL), sin nube ni cuentas, y lo construimos entre todos: cada vez somos más los que queremos ver nuestra red de un vistazo. Vamos 68 estrellas y queremos llegar a 100; si te sirve, déjanos la tuya.",
+        "en": "NetPulse is free software (AGPL), no cloud, no accounts, built together: more of us every day want to see our network at a glance. We're at 68 stars and aiming for 100; if it's useful to you, leave yours."
+      },
+      "url": "https://github.com/gnacho/netpulse",
+      "urlLabel": {
+        "es": "Estrella en GitHub",
+        "en": "Star on GitHub"
+      },
+      "starts": "2026-09-22",
+      "expires": "2026-12-31"
+    },
+    {
       "id": "netgrip-beta-2026-09",
       "urgency": "info",
       "title": {
