@@ -28,6 +28,7 @@ import {
   Moon,
   Pencil,
   Plus,
+  Power,
   Lock,
    Radar,
    RefreshCw,
@@ -1470,6 +1471,7 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
   const [passSet, setPassSet] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [disabling, setDisabling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -1539,6 +1541,27 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
     }
   }
 
+  // DELETE /api/config/adguard: desactiva AdGuard (borra la config) para que
+  // deje de sondearse y de penalizar la salud (#813).
+  const disable = async () => {
+    if (disabling) return
+    setDisabling(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/config/adguard', { method: 'DELETE' })
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`)
+      setPassSet(false)
+      setPassword('')
+      setHost('')
+      setEditing(false)
+      onSaved()
+    } catch {
+      setError(t('settings.adguard.errorGeneric'))
+    } finally {
+      setDisabling(false)
+    }
+  }
+
   // SPEC-65 D65-7c: configurado y sin editar → vista compacta (icono + host +
   // chip ok + Editar). Sin configurar → form directo como antes.
   if (passSet && !editing) {
@@ -1559,7 +1582,18 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
           >
             <Pencil className="h-4 w-4" strokeWidth={1.75} />
           </button>
+          <button
+            type="button"
+            onClick={() => void disable()}
+            disabled={disabling}
+            aria-label={t('settings.adguard.disable')}
+            title={t('settings.adguard.disable')}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-danger/30 text-danger transition-colors duration-150 hover:border-danger/60 hover:bg-danger/10 disabled:opacity-40"
+          >
+            <Power className="h-4 w-4" strokeWidth={1.75} />
+          </button>
         </div>
+        {error && <p className="mt-2 text-caption text-danger">{error}</p>}
         <p className="mt-3 text-caption leading-relaxed text-text-muted">{t('settings.adguard.hint')}</p>
       </Card>
     )
@@ -2983,6 +3017,34 @@ function ServicesCard({
     { key: 'wireguard', label: 'WireGuard', caption: t('settings.services.wireguardCaption') },
     { key: 'openvpn', label: 'OpenVPN', caption: t('settings.services.openvpnCaption') },
   ]
+
+  // AdGuard (#813): el toggle de Servicios también controla el sondeo y la
+  // penalización EN EL SERVIDOR. Se lee al montar (coherencia entre
+  // navegadores) y se escribe al cambiar.
+  useEffect(() => {
+    let alive = true
+    void fetch('/api/settings/services')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && d && typeof d.adguard === 'boolean') setService('adguard', d.adguard)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [setService])
+
+  const onServiceToggle = (key: keyof ServicesVisibility, v: boolean) => {
+    setService(key, v)
+    if (key === 'adguard') {
+      void fetch('/api/settings/services', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adguard: v }),
+      }).catch(() => undefined)
+    }
+  }
+
   return (
     <Card title={t('settings.services.title')} caption={t('settings.services.caption')} index={3} reduce={reduce}>
       <div className="grid grid-cols-1 gap-x-6 gap-y-0 sm:grid-cols-2">
@@ -2993,7 +3055,7 @@ function ServicesCard({
             checked={services[rows[0]!.key]}
             disabled={disabled}
             onCheckedChange={(v) => {
-              setService(rows[0]!.key, v)
+              onServiceToggle(rows[0]!.key, v)
               onSaved()
             }}
           />
@@ -3003,7 +3065,7 @@ function ServicesCard({
             checked={services[rows[1]!.key]}
             disabled={disabled}
             onCheckedChange={(v) => {
-              setService(rows[1]!.key, v)
+              onServiceToggle(rows[1]!.key, v)
               onSaved()
             }}
           />
@@ -3015,7 +3077,7 @@ function ServicesCard({
             checked={services[rows[2]!.key]}
             disabled={disabled}
             onCheckedChange={(v) => {
-              setService(rows[2]!.key, v)
+              onServiceToggle(rows[2]!.key, v)
               onSaved()
             }}
           />
