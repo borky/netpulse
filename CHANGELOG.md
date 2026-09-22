@@ -5,6 +5,19 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.32] - 2026-09-22
+
+### Fixed
+
+- **La orientación de la PWA la gestiona el sistema operativo (#808)**: el manifest declaraba `orientation: "any"`, que en una PWA instalada anula el bloqueo de orientación del propio sistema y además permite el giro invertido (180°): la pantalla rotaba y "se daba la vuelta" aunque el auto-rotado estuviera bloqueado. Se elimina el campo, de modo que el sistema vuelve a decidir y el bloqueo de rotación se respeta. (Una PWA ya instalada puede necesitar reinstalarse para recoger el manifest nuevo.)
+- **El updater deja de acumular snapshots de la base de datos (#809)**: cada actualización dejaba una copia completa de la BD en `server/data/.update-backup-*` sin límite alguno (18 copias / ~2,2 GB en dos semanas en una instancia viva). Ahora se conservan las tres más recientes y el resto se poda al terminar un update correcto; durante un rollback no se toca ninguna.
+- **Índices duplicados en `port_series_raw` (#817)**: la tabla ya tenía su clave primaria `(router_id, port_id, ts)` y cargaba además dos índices idénticos a esa misma clave, creados por error en dos sitios distintos (~33 MB de más en una base de 266 MB). Se dejan de crear y una migración los elimina en las bases existentes.
+
+### Changed
+
+- **El rollup cubre toda la retención de muestras (#812)**: el rollup nocturno raw→5m usaba una ventana fija de 48 h, así que tras una caída de más de dos días las muestras entre 48 h y 7 días nunca se agregaban y se perdían al purgar el raw, dejando un hueco permanente en las series de 5 min y diarias. La ventana pasa a ser la retención del raw (7 días) en métricas, ancho de banda por cliente y series por puerto.
+- **Backups automáticos comprimidos (#818)**: los backups diarios de la base de datos se guardan ahora comprimidos (`netpulse-<fecha>.db.gz`, aproximadamente 4× menos espacio) y la retención reconoce tanto el formato nuevo como los backups antiguos sin comprimir.
+
 ## [2.28.31] - 2026-09-22
 
 ### Fixed
