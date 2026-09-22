@@ -5,6 +5,16 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.31] - 2026-09-22
+
+### Fixed
+
+- **AdGuard se puede desactivar de verdad desde Ajustes > Servicios (#813)**: desmarcar un servicio en "Servicios" solo ocultaba su tarjeta en el panel; el servidor seguía sondeando AdGuard y restando 5 puntos de salud con la etiqueta "AdGuard inactivo". Peor aún, la tarjeta de configuración de AdGuard estaba condicionada por ese mismo checkbox, así que al desmarcarlo desaparecía también la única acción para desactivarlo. Ahora el toggle de Servicios se persiste en el servidor (`GET/PUT /api/settings/services`) y, al desactivar AdGuard, el sondeo se detiene y no se aplica la penalización. La tarjeta de AdGuard gana además un botón **Desactivar** que borra su configuración (`DELETE /api/config/adguard`), la tarjeta del panel se oculta cuando no hay configuración y el texto de la sección aclara que los servicios marcados "se muestran y se monitorizan".
+
+### Changed
+
+- **El feed de anuncios se sirve desde `netpulse.cloudless.club` (#810)**: el aviso del panel deja de depender del propio binario y pasa a leer el feed publicado en el dominio del proyecto.
+
 ## [2.28.30] - 2026-09-20
 
 ### Added
