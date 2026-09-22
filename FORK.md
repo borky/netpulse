@@ -85,8 +85,28 @@ replaced with documentation ranges. Scrubbing that out of 51 commits required
 rewriting the branch.
 
 Hooks are not versioned, so **a fresh clone has no protection until they are
-reinstalled**. Copy the three files into the new clone's `.git/hooks/` and
+reinstalled**. Copy the four files into the new clone's `.git/hooks/` and
 mark them executable.
+
+## The AI-trailer hook
+
+`.git/hooks/no-ai-trailers.py`, also run from `commit-msg`, refuses a message
+carrying `Co-Authored-By` for an AI tool, a "generated with" footer or the
+robot emoji. The maintainer asked for this on the panel's repo — "this repo
+keeps AI tooling out of the recorded history" — and enforced it there by
+force-pushing `main` to strip such trailers from an already-merged branch,
+which changed every commit hash after it and broke every open PR based on the
+old history. Same maintainer here, so the same rule is assumed.
+
+It needs no pattern file, so it works as soon as the hooks are copied in. A
+human co-author still passes. **`git rebase` and `git filter-branch` do not run
+`commit-msg`**, so a replay of older commits can still carry one through; to
+clean a branch:
+
+```sh
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f \
+  --msg-filter 'sed "/^Co-Authored-By: Claude/d"' upstream/main..HEAD
+```
 
 ## The agent module
 
