@@ -1,6 +1,25 @@
 {
   "announcements": [
     {
+      "id": "home-assistant-2026-09",
+      "urgency": "info",
+      "title": {
+        "es": "NetPulse ya habla con Home Assistant",
+        "en": "NetPulse now speaks Home Assistant"
+      },
+      "body": {
+        "es": "La versión 2.28.33 añade MQTT: apuntas NetPulse a tu broker y Home Assistant descubre solo un dispositivo con la salud de la red y uno por router, con sensores de CPU, memoria, temperatura, clientes y las alertas. Los routers que llevan NetGrip (v0.72.20) además se controlan desde ahí: WiFi de invitados, banIP, IPv6, SQM y reinicio, con la respuesta del router de vuelta. Todo en tu red local, sin nube y desactivado hasta que lo enciendas.",
+        "en": "Version 2.28.33 adds MQTT: point NetPulse at your broker and Home Assistant discovers on its own one device with the network health and one per router, with sensors for CPU, memory, temperature, clients and alerts. Routers running NetGrip (v0.72.20) can also be driven from there: guest Wi-Fi, banIP, IPv6, SQM and reboot, with the router's reply coming back. All on your local network, no cloud, off until you turn it on."
+      },
+      "url": "https://netpulse.cloudless.club/home-assistant",
+      "urlLabel": {
+        "es": "Cómo funciona",
+        "en": "How it works"
+      },
+      "starts": "2026-09-23",
+      "expires": "2026-11-30"
+    },
+    {
       "id": "github-stars-2026-09",
       "urgency": "info",
       "title": {
