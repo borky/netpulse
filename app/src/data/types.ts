@@ -517,9 +517,12 @@ export interface AgentInfo {
   kind?: 'native' | 'external' | 'netgrip'
   /** Cadencia de push declarada en segundos (solo externos, #288) */
   interval?: number
-  /** Puerto en el que responde el panel del propio router, tal y como lo
-   *  reporta su agente. Ausente = no lo reporta (agente antiguo). */
+  /** The port the router's own panel answers on, as its agent reports it.
+   *  Absent = not reported (an older agent). */
   panelPort?: number
+  /** The panel serves HTTPS on panelPort. A plain-http link to a TLS port is
+   *  refused rather than redirected, so the scheme has to come from here. */
+  panelTls?: boolean
   fresh: boolean
   /**
    * true si el agente reporta una versión distinta de la del binario embebido

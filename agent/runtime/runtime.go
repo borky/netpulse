@@ -61,6 +61,20 @@ type Options struct {
 	// instead of assuming a default that is wrong as often as not.
 	PanelPort int
 
+	// PanelTLS says the embedder's panel serves HTTPS. It comes from how the
+	// panel was started, not from whether a certificate key is to hand yet:
+	// deriving it from the key reported an HTTPS panel as plain HTTP until
+	// its certificate was open, and the monitoring side then sent its
+	// executor token in clear to a TLS port.
+	PanelTLS bool
+
+	// PanelSPKI returns the SPKI hash (hex SHA-256) of the certificate the
+	// panel is serving, or "" if it has none to report yet. Asked at every
+	// push: the certificate can be rotated under a running panel and the pin
+	// has to follow it. An HTTPS panel with no key is reported as exactly
+	// that, and the monitoring side then sends it nothing.
+	PanelSPKI func() string
+
 	// MultiWan lets an embedder (the NetGrip panel) report the uplink policy
 	// it manages: which connections exist, which one carries traffic, how
 	// the load is split. nil = nothing to report, and the payload then
@@ -190,7 +204,7 @@ func Run(ctx context.Context, opts Options) error {
 				log.Info("[netpulse-agent] iw evento", "action", action, "mac", ev.MAC, "iface", ev.Iface)
 				payload := prober.BuildWireless(ctx, opts.Slug, opts.Version)
 				withMeta(payload, opts)
-				payload.PanelPort = opts.PanelPort
+				withPanel(payload, opts)
 				a.pushOnce(ctx, payload)
 			}); err != nil {
 				log.Warn("[netpulse-agent] iw event terminó", "err", err)
@@ -247,7 +261,7 @@ func Run(ctx context.Context, opts Options) error {
 
 		payload := prober.Build(ctx, opts.Slug, opts.Version)
 		withMeta(payload, opts)
-		payload.PanelPort = opts.PanelPort
+		withPanel(payload, opts)
 		payload.Data.MultiWan = mw
 		a.pushOnce(ctx, payload)
 		select {

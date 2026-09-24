@@ -644,11 +644,13 @@ func (s *server) applyViaNetGrip(routerID string, planID string, ops []executor.
 		return false, nil
 	}
 
-	addr := host
-	if !strings.Contains(addr, ":") {
-		addr = addr + ":8080"
+	panel, report := s.netgripPanelOf(routerID)
+	scheme, addr, client, err := netgripPanelTarget(host, panel, report, 30*time.Second)
+	if err != nil {
+		log.Printf("[netpulse] NetGrip: %v", err)
+		return false, nil
 	}
-	u := url.URL{Scheme: "http", Host: addr, Path: "/api/executor/apply"}
+	u := url.URL{Scheme: scheme, Host: addr, Path: "/api/executor/apply"}
 	body, _ := json.Marshal(map[string]any{"ops": ops})
 	req, err := http.NewRequest("POST", u.String(), bytes.NewReader(body))
 	if err != nil {
@@ -658,7 +660,6 @@ func (s *server) applyViaNetGrip(routerID string, planID string, ops []executor.
 	req.Header.Set("Authorization", "Bearer "+execToken)
 	req.Header.Set("X-Plan-ID", planID)
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[netpulse] NetGrip no responde en %s: %v", u.Host, err)

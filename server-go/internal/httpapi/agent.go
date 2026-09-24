@@ -490,6 +490,9 @@ type agentListItem struct {
 	// reports it. The UI links there, and a guessed default is wrong on
 	// any router that does not use it. 0 = not reported.
 	PanelPort int `json:"panelPort,omitempty"`
+	// PanelTLS: the panel serves HTTPS on PanelPort, so a link to it must use
+	// https - plain http to a TLS port is refused, not redirected.
+	PanelTLS bool `json:"panelTls,omitempty"`
 }
 
 // agentUpgradeStep es un paso de la historia (timeline de la UI, #284).
@@ -583,6 +586,7 @@ func (s *server) handleAgentsList(w http.ResponseWriter, _ *http.Request) {
 				}
 				if payload != nil {
 					item.PanelPort = payload.PanelPort
+					item.PanelTLS = payload.PanelTLS
 				}
 				item.RouterID = resolveAgentRouter(slug, payload, routerByID)
 				if payload != nil && payload.Data.System != nil && payload.Data.System.Board != nil {
