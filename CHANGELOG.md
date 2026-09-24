@@ -5,17 +5,15 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
-## [Unreleased]
+## [2.28.34] - 2026-09-24
 
 ### Added
 
 - **Ajustes de MQTT y propagación a NetGrip (#838)**: nueva tarjeta en Ajustes para configurar el publisher MQTT (activar, broker, puerto, credenciales, instancia e intervalo) sin tocar el entorno ni reiniciar: se guarda en la base de datos y se aplica en caliente. Incluye prueba de conexión contra el broker y **propagación a la flota**: con un clic envía esa configuración a cada router NetGrip (op `mqtt.configure` con rollback si el broker nuevo no responde), para tener toda la flota en Home Assistant sin configurar router a router.
-
-
-
-### Added
-
 - **NetPulse cede el paso a los routers que se exponen solos (#832)**: cuando un router lleva NetGrip con su MQTT activado (se expone a Home Assistant con sus propias entidades y comandos), el publisher de flota deja de publicar su dispositivo por router y publica la configuración de descubrimiento vacía para que Home Assistant la borre, en lugar de duplicarla. Los routers que no se exponen (sin NetGrip, o con el MQTT de NetGrip apagado) siguen publicando las seis entidades de siempre, así que la cobertura no depende de NetGrip. El dato lo informa el propio agente del router en su payload.
+- **Acciones en las alertas (#833)**: cada fila del feed gana acciones con tooltip: "Identificar dispositivo" (dispositivo desconocido, va al flujo de identificación), "Actualizar agente" (agente desactualizado, va a orquestación) y "Descartar alerta" en todas. El descarte se persiste (`POST /api/alerts/dismiss`) y sobrevive a reinicios; la alerta de agente desactualizado se resuelve sola cuando el agente informa de una versión al día.
+- **Tarjeta de NetGrip en Orquestación (#836)**: aviso al pie de la sección de que escribe en los routers y recomendación de NetGrip para OpenWrt (el rol de agente cuesta ~10 MB de disco y ~15 MB de RAM), con enlace a netgrip.cloudless.club.
+- **Acerca de (#837)**: la entrada de Ko-fi se sustituye por "Danos una estrella en GitHub" y "Código fuente" por "Informar de un problema", que apunta a las incidencias de GitHub.
 
 ## [2.28.33] - 2026-09-23
 
