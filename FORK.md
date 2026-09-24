@@ -22,6 +22,9 @@ disturbs them.
 
 ```sh
 git fetch upstream
+# Read what the new commits send out of the network BEFORE anything moves -
+# see "Outbound check" below. Once main is fast-forwarded there is nothing
+# left to compare.
 git checkout main && git merge --ff-only upstream/main && git push origin main
 git rebase -i upstream/main develop
 ```
@@ -35,7 +38,33 @@ git grep -c '<a symbol the commit introduced>' upstream/main -- '*.go'
 ```
 
 Then `go build ./...` and `go test ./...` in `server-go` and `agent`,
-`npm run lint` in `app`, and deploy before tagging.
+`npm run lint` in `app`, and deploy before tagging. `go test` is also where a
+call home brought back by a sync shows up - see the fork-only patches below.
+
+### Outbound check
+
+This fork sends no identifying data anywhere, and upstream has added outbound
+calls before without it being obvious from the subject line. Run this right
+after `git fetch upstream`, before the fast-forward:
+
+```sh
+base=$(git merge-base origin/develop upstream/main)   # the develop you last pushed
+pat='[a-z][a-z0-9+.-]*://[a-zA-Z0-9.%/_?=&:-]+'   # any scheme: MQTT is tcp://
+git grep -hoE "$pat" "$base"       -- '*.go' '*.ts' '*.tsx' ':!*_test.go' ':!*.test.ts' ':!*.test.tsx' | sort -u > /tmp/np-before
+git grep -hoE "$pat" upstream/main -- '*.go' '*.ts' '*.tsx' ':!*_test.go' ':!*.test.ts' ':!*.test.tsx' | sort -u > /tmp/np-after
+diff /tmp/np-before /tmp/np-after
+```
+
+It compares against the base of the `develop` you last pushed, which does
+not move until you push again, so it still gives the right answer partway
+through a sync - after the fast-forward, even after the rebase. Once the new
+`develop` is pushed there is nothing left to compare, so run it before then.
+It covers the server, the
+agent (which runs on routers inside NetGrip) and the web app. Any new
+endpoint gets read before it is merged: what it sends, whether it is on by
+default, and whether it carries anything that identifies the installation.
+A URL assembled at runtime from pieces will not show up here; the guard tests
+below are the second line for the project's own domain.
 
 ## What is here, and where it should end up
 
@@ -57,7 +86,64 @@ some of these may already be solved there.
 
 | patch | why it is not upstream |
 |---|---|
-| — | none yet. Everything here is upstreamable and simply has not been offered. |
+| **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
+
+### Why telemetry is unwired, not deleted
+
+Upstream's anonymous daily ping (#822) sends `GET /instances/<id>?v=<version>&os=<os-arch>`
+to the project's server, once a day, on by default. The id is random but
+**persistent** — it ties one installation together across every ping for as
+long as it runs — and like any request it discloses the server's public
+address. That is identifying data leaving the network, which this fork does
+not do.
+
+There were three ways to keep it out, and only one keeps syncs cheap:
+
+| approach | telemetry in the binary? | cost at every sync |
+|---|---|---|
+| set `NETPULSE_TELEMETRY=0` at deploy | yes, switched off at runtime | none — but it is one missed environment variable from sending |
+| delete `internal/telemetry/` | no | a modify/delete conflict every time upstream touches the package |
+| **remove only the wiring in `main.go`** | **no — unreferenced, it is never linked** | only if upstream edits those exact lines |
+
+The package's source stays in the tree, untouched, so upstream's changes to
+it merge silently. What runs on the server is a binary with no
+telemetry code in it at all, rather than one with code that is switched off.
+
+**The guards.** Three new, fork-only test files:
+
+- `server-go/cmd/netpulse/no_telemetry_test.go` reads every non-test `.go`
+  file in `server-go` and fails on an import of the telemetry package outside
+  itself, on any reference to `NETPULSE_TELEMETRY`, and on **any** mention of
+  the project's domain, `cloudless.club`, other than the announcements feed.
+  The last rule also catches the ping rebuilt without the package, a new host,
+  and a host name split across strings. The allowed feed is matched as a whole
+  quoted literal, so nothing can be tacked onto it in the source.
+- `server-go/internal/httpapi/no_call_home_announcements_test.go` covers what
+  a source scan cannot: something built onto the feed's request in code. It
+  drives the real start path against a local server and fails unless the
+  request is a plain GET of the static file - no query string, no body, only
+  the expected user agent. Proven against an id appended by the caller, an
+  extra header, and an id folded into the user agent.
+- `agent/runtime/no_call_home_test.go` does the source scan for the agent,
+  which runs on routers inside NetGrip, with no allowed list at all.
+
+All three are new files, so none can conflict with a sync. The request test
+calls upstream's own start function; if upstream renames it, the test stops
+compiling - loud, and a one-line fix, which is how a guard should fail.
+
+They read source rather than asking the toolchain what it would link. The
+first version did ask `go list -deps`, and a review showed what that misses: it
+sees only the host platform with default build tags, so a file limited to
+arm64, or behind a build tag, would re-link the ping into the real deploy
+build while the check passed. Reading source ignores build constraints. Both
+were proven against planted violations - a build-tagged file, an
+arm64-only file, a MIPS-only file in the agent, the ping rebuilt without the
+package, a bare reference to the switch - and against a clean tree. Each also
+fails if it scans implausibly few files: an earlier version walked nothing at
+all and passed every case, which is exactly how a guard fails silently.
+
+If a sync trips one, `go test ./...` names the file. For the telemetry
+package, remove the wiring and leave the package untouched.
 
 ## Running this fork as the product
 
