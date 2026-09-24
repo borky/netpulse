@@ -197,9 +197,73 @@ FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f \
 ## The agent module
 
 `agent/` is its own Go module (`github.com/gnacho/netpulse/agent`) and the
-router panel depends on it. Two payload fields it gained here — the panel's
-port and the uplink policy — are what the panel's own fork needs, and they are
-not in a released agent yet, so that side builds with a Go workspace.
+router panel depends on it. The payload fields it gained here — the panel's
+port, whether the panel serves HTTPS and the key of the certificate it
+serves, and the uplink policy — are what the panel's own fork needs, and they
+are not in a released agent yet, so that side builds with a Go workspace.
+
+### Reaching a NetGrip panel on HTTPS
+
+When a router has a NetGrip executor token, `applyViaNetGrip` hands a plan's
+operations to the panel's `/api/executor/apply`, token attached. It used to
+address the panel as `http://<host>:8080`, which was wrong twice over: NetGrip
+has defaulted to 8090 since upstream #210, and a panel serving HTTPS refuses
+plain HTTP - while the token, which lets this server change the router, went
+in clear until it did.
+
+It now uses the port and scheme the embedded agent reports. The panel's
+certificate is self-signed, so the connection is pinned to the key the agent
+reports (`panelSpki`, the SHA-256 of the served certificate's
+SubjectPublicKeyInfo). The router page's link to the panel follows the same
+scheme. All of it lives in fork-only files
+(`internal/httpapi/netgrip_panel.go`, `agent/runtime/panel.go`) with one call
+site in each upstream file.
+
+Every doubtful case sends nothing, and the plan falls back to the agent's own
+channel as when the panel does not answer:
+
+- **Only the router's own agent counts** - the one whose slug is the router id,
+  which is also the id the executor token was stored under. A first version
+  matched agents by host name as well and took the first; a second agent
+  claiming the same host name could report plain HTTP and get the token sent
+  in clear. A review demonstrated it; a test now does.
+- **A router with an agent needs a fresh report from it.** An old one may
+  predate a change of scheme. Reports are persisted on every push, so this
+  covers the window after this server restarts, until the agent's next push,
+  and a **revoked or uninstalled** agent too: revoking forgets the report in
+  memory but leaves both the persisted report and the executor token behind,
+  and treating that as "no agent" sent the next plan's token in clear - a
+  review demonstrated it. So only a router with no report anywhere keeps
+  upstream's behaviour, an executor token and an address and nothing more,
+  which upstream's own delegation tests depend on; refusing that case too, as
+  a first version of this fix did, broke them. A failed lookup counts as
+  stale.
+- **HTTPS is reported from how the panel was started, separately from the
+  key.** Deriving it from the key reported an HTTPS panel as plain HTTP until
+  its certificate was open. HTTPS with no key yet sends nothing.
+- No redirects are followed with the token, and no connection is kept open.
+
+**What the pin is worth depends on the agent's channel.** With the agent
+pushing over https and pinning this server's key (`NETPULSE_SERVER_FP`), the
+report cannot be altered in transit and the pin is sound. Over plain http it
+is not: the push is signed with a key derived from the token it carries, so
+anyone who reads one can forge one, and could substitute the panel's key.
+They would gain nothing new - on that same path the executor token already
+crosses in clear, in the agent's backup uploads and at start-up
+registration - but it means this change fully protects the token only once
+the agent channel is on https. On a plain-http deployment it still stops a
+passive listener from reading the token off each delegated plan.
+
+**Deploy NetGrip before NetPulse.** A NetGrip from before this change, running
+on `-https`, reports its port but not its scheme, and a new NetPulse would send
+the token to that TLS port in plain http.
+
+Note that `applyViaNetGrip` only runs for routers registered over SSH:
+`hostOfRouter` returns nothing for an `agent_only` router, whose plans already
+travel over the agent's channel. The standalone `netpulse-agent` binary has
+its own loopback delegation to a NetGrip at `127.0.0.1:8080`, with the same
+two problems; it is left alone because NetGrip embeds the agent and retires
+a standalone install, so the two are not run together.
 
 **Do not rename the module path** in this fork: every internal import would
 change, guaranteeing conflicts on every sync. The fix is to get those fields
