@@ -791,6 +791,9 @@ type agentListItem struct {
 	// reports it. The UI links there, and a guessed default is wrong on
 	// any router that does not use it. 0 = not reported.
 	PanelPort int `json:"panelPort,omitempty"`
+	// PanelTLS: the panel serves HTTPS on PanelPort, so a link to it must use
+	// https - plain http to a TLS port is refused, not redirected.
+	PanelTLS bool `json:"panelTls,omitempty"`
 }
 
 // agentUpgradeStep es un paso de la historia (timeline de la UI, #284).
@@ -925,6 +928,7 @@ func (s *server) handleAgentsList(w http.ResponseWriter, _ *http.Request) {
 				item.RejectedAt = rejects[slug]
 				if payload != nil {
 					item.PanelPort = payload.PanelPort
+					item.PanelTLS = payload.PanelTLS
 				}
 				// #1874: un push event-driven (wireless-only) no trae sección
 				// system, y resolver la asociación con el payload actual dejaba
