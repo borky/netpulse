@@ -137,9 +137,9 @@ client splits. SNMP-polled managed switches are first-class citizens too.
 - **MQTT + Home Assistant (opt-in)**: publish the fleet state (health, clients,
   per-router vitals and alerts) to an MQTT broker; Home Assistant discovers the
   entities on its own. Routers that expose themselves with NetGrip are not
-  duplicated. Off by default and cloud-free: configured with the
-  `NETPULSE_MQTT_*` environment variables (or the equivalent `mqtt_*` UCI options
-  on-box). Topics, entities and limits in the
+  duplicated. Off by default and cloud-free: configured from the MQTT card in
+  Settings (or with the `NETPULSE_MQTT_*` environment variables, or the
+  equivalent `mqtt_*` UCI options on-box). Topics, entities and limits in the
   [manual](docs/manual.en.md#home-assistant-mqtt).
 
 That is still a selection: **[every feature is on the website](https://netpulse.cloudless.club/features)**,

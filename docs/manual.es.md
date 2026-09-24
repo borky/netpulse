@@ -610,6 +610,10 @@ Los umbrales de temperatura, señal y latencia que definen la salud y las alerta
 
 ### Procedimiento: activarlo
 
+La forma habitual es la **tarjeta MQTT de Ajustes**: la activas, pones host, puerto y credenciales, pruebas la conexión y guardas; se aplica en caliente, sin reiniciar. Desde esa misma tarjeta puedes **propagar la configuración a los routers NetGrip** de la flota, para no configurarlos uno a uno.
+
+La alternativa son las variables de entorno (o las opciones UCI `mqtt_*` en modo on-box):
+
 1. Comprueba que el broker está en marcha y anota host, puerto (1883 por defecto) y credenciales.
 2. Define las variables en el arranque del servicio de NetPulse:
    - `NETPULSE_MQTT_ENABLED=1`
