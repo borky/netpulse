@@ -55,6 +55,8 @@ export function RouterInfo({ router, extras }: { router: Router; extras?: Router
   const agent = netgripAgent
   const hasNetgrip = netgripAgent?.kind === 'netgrip'
   const netgripPort = netgripAgent?.panelPort || 8090
+  // The scheme the panel actually answers on, as its agent reports it.
+  const netgripScheme = netgripAgent?.panelTls ? 'https' : 'http'
   const ex = extras ?? (isDemo ? getRouterExtras(router.id) : EMPTY_EXTRAS)
   const reduce = useReducedMotion()
   const [toast, setToast] = useState(false)
@@ -185,7 +187,7 @@ export function RouterInfo({ router, extras }: { router: Router; extras?: Router
         </a>
         {hasNetgrip && (
           <a
-            href={`http://${router.ip}:${netgripPort}`}
+            href={`${netgripScheme}://${router.ip}:${netgripPort}`}
             target="_blank"
             rel="noreferrer"
             title={t('routerDetail.info.netgripTip')}

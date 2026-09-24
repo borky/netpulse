@@ -21,7 +21,20 @@ type Payload struct {
 	// PanelPort: the port the embedder's own web panel listens on, so
 	// anything linking to it does not have to guess. 0 = no panel, or an
 	// agent that does not report one.
-	PanelPort int         `json:"panelPort,omitempty"`
+	PanelPort int `json:"panelPort,omitempty"`
+	// PanelTLS: the panel serves HTTPS on PanelPort, so anything reaching it
+	// must use https - a plaintext request to a TLS port is refused.
+	PanelTLS bool `json:"panelTls,omitempty"`
+	// PanelSPKI: SHA-256 of the SubjectPublicKeyInfo of the certificate the
+	// panel is serving right now, in hex. The panel's certificate is
+	// self-signed, so nothing can verify it by name; this is what the
+	// monitoring side pins instead, learned from this report rather than from
+	// the connection it authenticates. The pin is only as trustworthy as the
+	// agent's channel to the server: sound when the agent reaches it over
+	// https with the server's key pinned, open to substitution by an attacker
+	// on the path when it pushes over plain http. Empty when the panel is not
+	// on TLS, or is but has no key to report yet - PanelTLS says which.
+	PanelSPKI string      `json:"panelSpki,omitempty"`
 	Data      PayloadData `json:"data"`
 }
 
