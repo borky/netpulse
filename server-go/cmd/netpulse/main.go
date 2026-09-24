@@ -58,7 +58,6 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/sshkey"
 	"github.com/gnacho/netpulse/server-go/internal/staticspa"
 	"github.com/gnacho/netpulse/server-go/internal/telegram"
-	"github.com/gnacho/netpulse/server-go/internal/telemetry"
 	"github.com/gnacho/netpulse/server-go/internal/tlscert"
 	"github.com/gnacho/netpulse/server-go/internal/updater"
 	"github.com/gnacho/netpulse/server-go/internal/webhook"
@@ -662,8 +661,6 @@ func run() error {
 			staticDesc = "(embed)"
 		}
 		log.Printf("[netpulse] datos: %s · estáticos: %s", cfg.DataDir, staticDesc)
-		// Aviso anónimo diario de instancia activa (#822). Fail-silent.
-		telemetry.New(dbHandle, httpapi.Version, cfg.DemoMode).Start(context.Background())
 		p.Start()
 		mqttMgr.Start()
 		upd.Start()
