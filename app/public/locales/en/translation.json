@@ -246,7 +246,12 @@
         }
       }
     },
-    "viewDevice": "View device"
+    "viewDevice": "View device",
+    "actions": {
+      "identify": "Identify device",
+      "updateAgent": "Update agent",
+      "dismiss": "Clear alert"
+    }
   },
   "auth": {
     "checking": "Checking session",
@@ -1161,9 +1166,9 @@
     "about": {
       "changelog": "Changelog",
       "visitWeb": "Visit website",
-      "code": "Source code",
+      "starGithub": "Star us on GitHub",
+      "reportIssue": "Report a problem",
       "desc": "Network control panel for OpenWRT devices. Monitors routers and APs, and applies explicit admin actions (reservations, blocks, orchestration, firmware) with snapshot and rollback.",
-      "madeAtHome": "Support the project on Ko-fi",
       "privacy": "100% private · 0% cloud",
       "title": "About",
       "versionNote": "v1.0.0",
@@ -1899,6 +1904,22 @@
   "orchestration": {
     "title": "Orchestration",
     "subtitle": "Configure network services declaratively. Every change goes through a reviewable plan before applying.",
+    "experimental": {
+      "badge": "Experimental",
+      "title": "Experimental section",
+      "features": {
+        "panel": "Friendly panel on the router itself",
+        "wifi": "Guest and IoT WiFi with QR",
+        "vpn": "Guided WireGuard, SQM and DDNS",
+        "firewall": "Visual firewall and VLANs",
+        "snapshots": "Snapshots with undo",
+        "mqtt": "MQTT / Home Assistant integration"
+      },
+      "body": "This section writes to your routers over SSH through a reviewable plan before applying, with automatic snapshot and rollback if anything goes wrong. It is an experimental feature: always review the generated plan and work with a prior snapshot.",
+      "body2": "If your router runs OpenWrt, we recommend NetGrip: it runs on the router itself and also acts as a NetPulse agent; in that role it uses only about 10 MB of disk and 15 MB of RAM (measured on an ARM64 router), on top of offering much more functionality.",
+      "hook": "Your router can already do it all: NetGrip just makes it easy.",
+      "cta": "Discover NetGrip"
+    },
     "router": "Router",
     "gateway": "Gateway",
     "generatePlan": "Generate plan",

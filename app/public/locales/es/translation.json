@@ -246,7 +246,12 @@
         }
       }
     },
-    "viewDevice": "Ver dispositivo"
+    "viewDevice": "Ver dispositivo",
+    "actions": {
+      "identify": "Identificar dispositivo",
+      "updateAgent": "Actualizar agente",
+      "dismiss": "Limpiar alerta"
+    }
   },
   "auth": {
     "checking": "Comprobando sesión",
@@ -1161,9 +1166,9 @@
     "about": {
       "changelog": "Registro de cambios",
       "visitWeb": "Visitar web",
-      "code": "Código",
+      "starGithub": "Danos una estrella en GitHub",
+      "reportIssue": "Informar de un problema",
       "desc": "Panel de control de red para dispositivos OpenWRT. Monitoriza routers y APs y aplica acciones explícitas del admin (reservas, bloqueos, orquestación, firmware) con snapshot y rollback.",
-      "madeAtHome": "Apoya el proyecto en Ko-fi",
       "privacy": "100% privado · 0% nube",
       "title": "Acerca de",
       "versionNote": "v1.0.0",
@@ -1899,6 +1904,22 @@
   "orchestration": {
     "title": "Orquestación",
     "subtitle": "Configura servicios de red de forma declarativa. Cada cambio pasa por un plan revisable antes de aplicarse.",
+    "experimental": {
+      "badge": "Experimental",
+      "title": "Sección experimental",
+      "features": {
+        "panel": "Panel amable en el propio router",
+        "wifi": "WiFi de invitados e IoT con QR",
+        "vpn": "WireGuard, SQM y DDNS guiados",
+        "firewall": "Cortafuegos visual y VLANs",
+        "snapshots": "Snapshots con deshacer",
+        "mqtt": "Integración MQTT / Home Assistant"
+      },
+      "body": "Esta sección escribe en los routers por SSH a través de un plan revisable antes de aplicar, con snapshot automático y rollback si algo sale mal. Es una funcionalidad en fase experimental: revisa siempre el plan generado y trabaja con un snapshot previo.",
+      "body2": "Si tu router es OpenWrt, te recomendamos NetGrip: corre en el propio router y también actúa como agente de NetPulse; en ese papel consume solo unos 10 MB de disco y 15 MB de RAM (medidos en un router ARM64), además de ofrecer mucha más funcionalidad.",
+      "hook": "Tu router ya sabe hacerlo todo: NetGrip solo lo pone fácil.",
+      "cta": "Descubre NetGrip"
+    },
     "router": "Router",
     "gateway": "Puerta de enlace",
     "generatePlan": "Generar plan",
