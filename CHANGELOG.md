@@ -5,6 +5,25 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.35] - 2026-09-25
+
+### Fixed
+
+- **Routers solo-agente que flapeaban offline con cada roam (#852)**: un push de evento inalámbrico (roam de un cliente, payload sin sección system) sobrescribía el estado del agente en el servidor y rompía el emparejamiento por hostname/MAC hasta el próximo push completo; en routers sin slug exacto cada poll caía en la ventana y marcaba "sin cliente". El registry conserva ahora la última identidad conocida del agente (también persistida y restaurada).
+- **La caída del agente no notificaba en routers solo-agente (#850)**: el poll sigue sirviendo el último payload cacheado, así que la tarjeta nunca marcaba offline y el aviso del Dead Man's Switch era system/no urgente: jamás pasaba los filtros de notificación "solo urgentes del topic router". Ahora emite como category router + urgent + critical (con SSH disponible sigue siendo el aviso system no urgente de siempre).
+- **Instalación de agente contra un servidor HTTPS (#851)**: el agente fallaba en bucle exigiendo `NETPULSE_SERVER_FP` y el one-liner de la UI no lo incluía. `install-agent.sh` deriva el fingerprint SPKI del propio certificado cuando no se pasa `--server-fp`, el one-liner lo incluye si el servidor lo conoce, y el error del agente imprime el comando openssl exacto.
+- **Velocidades de puerto truncadas y conduits DSA visibles (#847)**: los enlaces de 2500 Mbps se mostraban como "2 Gbps" (entero truncado) y el puerto CPU interno del switch (conduit DSA, marcado por `/sys/class/net/<i>/dsa`) aparecía como boca falsa con velocidades sin sentido ("150 Mbps" en un BPI-R4). Gbps con decimales ("2.5 Gbps") y los conduits se excluyen del panel y del fallback de WAN. Requiere agente actualizado en los routers (el probe corre en el router).
+- **La velocidad WAN contratada no se veía en la topología (#849)**: el plan del enlace WAN salía "—" en live aunque estuviera configurado en Ajustes; ahora se deriva del par contratado ("Fibra 1000/1000 Mbps") sin pisar un plan ya presente.
+- **El icono personalizado de un cliente no llegaba a la topología (#845)**: el chip del mapa usaba solo el tipo deducido e ignoraba `iconOverride`; ahora usa el mismo helper que las filas de Clientes.
+- **Una alerta offline por caída (#846)**: mientras una caída está abierta, el flapping ya no re-emite la alerta crítica ni re-notifica; la recuperación debe mantenerse 3 sondeos seguidos y al estabilizarse la alerta desaparece del feed en lugar de quedar leída, y sobrevive a reinicios del servidor.
+- **Emparejamiento de agentes en la tabla de flota (#848)**: las filas emparejaban solo por slug y perdían agentes cuyo slug no coincide con el id del router; ahora también por routerId.
+- **Traducciones de la landing ar/hi/zh/ja (#841)**: repaso nativo de las cadenas traducidas en bloque; "topology" ya no es topografía en árabe, "health" ya no es salud humana en hindi, puntuación CJK normalizada en chino, y restaurado el inciso "(o la tarjeta MQTT en Ajustes)" que el inglés ganó después.
+
+### Added
+
+- **Rutas prerenderizadas por idioma en la web (#842)**: la landing genera una ruta estática por idioma (`/de/`, `/ja/features/`, `/ar/home-assistant/`, 10 idiomas x 3 páginas) con `lang`, canonical, hreflang y `og:locale` correctos, indexable de verdad para los crawlers. `/` sigue siendo el shell en español con el selector JS; `/es/` canonicaliza a `/`. El sitemap lista las 30 URLs.
+- **Contador de instancias documentado (#822)**: el README describe el ping diario anónimo (id aleatorio, versión, OS/arquitectura; nada más) y cómo desactivarlo (`NETPULSE_TELEMETRY=0`).
+
 ## [2.28.34] - 2026-09-24
 
 ### Added
