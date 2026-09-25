@@ -415,3 +415,62 @@ func TestPanelOfTreatsAFailedLookupAsStale(t *testing.T) {
 		t.Fatalf("with the database unreadable, got %v, want staleReport", r)
 	}
 }
+
+// tokenOverSSH answers upstream's executor-token fallback and records whether
+// it was asked.
+type tokenOverSSH struct{ asked atomic.Bool }
+
+func (f *tokenOverSSH) Run(_, cmd string, _ time.Duration) (string, error) {
+	if strings.Contains(cmd, "executor-token") {
+		f.asked.Store(true)
+		return "exec-token-over-ssh\n", nil
+	}
+	return "", nil
+}
+
+// Upstream's SSH fallback reads the executor token from the router and stores
+// it. For a router whose agent has never reported, that would send the token
+// over upstream's plain-http path, and every later plan too, once it is
+// stored. So the fallback runs only for a router with a report, whose token
+// then goes through the pinned path; with a report it still works.
+func TestTheSSHTokenFallbackNeedsAnAgentReport(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		agent         bool
+		wantDelivered bool
+	}{
+		{"no agent has reported", false, false},
+		{"the router's agent reported", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got atomic.Value
+			got.Store("")
+			panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got.Store(r.Header.Get("Authorization"))
+				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			}))
+			defer panel.Close()
+			host, port := splitHostPort(t, panel.URL)
+
+			s := panelTestServer(t)
+			pool := &tokenOverSSH{}
+			s.pool = pool
+			if tc.agent {
+				addPanelRouter(t, s, "gw", "router-a", host)
+				addPanelAgent(t, s, "gw", "router-a", port, false, "")
+			} else {
+				addPanelRouter(t, s, "gw", "router-a", panel.Listener.Addr().String())
+			}
+
+			if _, err := s.applyViaNetGrip("gw", "plan-1", nil); err != nil {
+				t.Fatalf("applyViaNetGrip: %v", err)
+			}
+			if delivered := got.Load().(string) != ""; delivered != tc.wantDelivered {
+				t.Fatalf("token delivered = %v, want %v", delivered, tc.wantDelivered)
+			}
+			if pool.asked.Load() != tc.agent {
+				t.Fatalf("SSH fallback asked = %v, want %v", pool.asked.Load(), tc.agent)
+			}
+		})
+	}
+}
