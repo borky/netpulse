@@ -78,6 +78,7 @@ coherent feature first:
 | Routers / topology / devices | 11 | yes, mostly bug fixes |
 | WAN, alerts, VLANs, agents | ~8 | yes |
 | UI, i18n, comments | ~12 | yes, where not cosmetic |
+| HTTPS with a private CA (see below) | ~12 | yes — opt-in, defaults unchanged |
 
 Check each against `upstream/main` first: upstream moves quickly (2.28.x) and
 some of these may already be solved there.
@@ -283,6 +284,26 @@ travel over the agent's channel. The standalone `netpulse-agent` binary has
 its own loopback delegation to a NetGrip at `127.0.0.1:8080`, with the same
 two problems; it is left alone because NetGrip embeds the agent and retires
 a standalone install, so the two are not run together.
+
+### HTTPS for NetPulse itself
+
+`docs/https.md` is the user-facing account. The pieces, each opt-in so
+upstream's behaviour is unchanged until an admin turns it on:
+
+- `server-go/internal/tlscert/ca.go`: the private CA (name-constrained root,
+  self-renewing leaf with a stable key).
+- `server-go/internal/tlsmode`: the HTTPS listener, the plain-HTTP modes, the
+  confirm-over-HTTPS step, HSTS per mode, and `AgentTrust` - how every
+  install path moves an agent to HTTPS.
+- `server-go/internal/httpapi/https_settings.go` and
+  `app/src/components/HttpsCard.tsx`: Settings > HTTPS.
+- Agent: `tlspin` accepts CA pins and pin lists; `runtime.ProveServerKey`
+  with `POST /api/agents/pair/hello` proves the server's key at pairing;
+  `runtime.ServerTransport` is exported for NetGrip.
+
+The agent half needs an agent release before NetGrip's upstream can use it;
+until then NetGrip builds against this checkout through its local `go.work`,
+as for the panel fields above.
 
 **Do not rename the module path** in this fork: every internal import would
 change, guaranteeing conflicts on every sync. The fix is to get those fields
