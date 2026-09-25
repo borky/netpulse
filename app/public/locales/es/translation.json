@@ -41,7 +41,7 @@
     "unreadCount_one": "aviso sin leer",
     "unreadCount_other": "avisos sin leer",
     "viewRouter": "Ver router",
-    "viewDevice": "Localizar este dispositivo",
+    "findDevice": "Localizar este dispositivo",
     "identifyDevice": "Identificar este dispositivo",
     "connectedTo": "Conectado a",
     "port": "Puerto",
