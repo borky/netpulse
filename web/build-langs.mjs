@@ -17,6 +17,11 @@ const WEB = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.join(WEB, 'langs')
 const BASE = 'https://netpulse.cloudless.club'
 const LANGS = ['es', 'en', 'zh', 'ar', 'hi', 'pt', 'fr', 'ja', 'ru', 'de']
+// BCP-47 para og:locale de cada idioma prerenderizado.
+const OG_LOCALE = {
+  es: 'es_ES', en: 'en_US', zh: 'zh_CN', ar: 'ar_SA', hi: 'hi_IN',
+  pt: 'pt_PT', fr: 'fr_FR', ja: 'ja_JP', ru: 'ru_RU', de: 'de_DE',
+}
 // slug = ruta limpia del idioma (con / final); esSlug = ruta raíz en nginx
 // (sin / final: /features tiene location exacta propia); outDir = destino.
 const PAGES = [
@@ -56,6 +61,10 @@ function fixHead(html, lang, slug, esSlug) {
   html = html.replace(
     /<meta property="og:url" content="[^"]*"\s*\/?>/,
     `<meta property="og:url" content="${urlFor(lang, slug, esSlug)}" />`,
+  )
+  html = html.replace(
+    /<meta property="og:locale" content="[^"]*"\s*\/?>/,
+    `<meta property="og:locale" content="${OG_LOCALE[lang]}" />`,
   )
   return html
 }
