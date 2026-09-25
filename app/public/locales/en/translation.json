@@ -42,6 +42,7 @@
     "unreadCount_other": "unread alerts",
     "viewRouter": "View router",
     "viewDevice": "Find this device",
+    "identifyDevice": "Identify this device",
     "connectedTo": "Connected to",
     "port": "Port",
     "wgPeerCaption": "WireGuard peer · wg0",
