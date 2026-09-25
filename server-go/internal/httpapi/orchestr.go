@@ -639,12 +639,12 @@ func (s *server) applyViaNetGrip(routerID string, planID string, ops []executor.
 	if h, _, err := net.SplitHostPort(sshHost); err == nil {
 		host = h
 	}
-	execToken := s.netgripExecutorToken(routerID)
+	panel, report := s.netgripPanelOf(routerID)
+	execToken := s.netgripTokenFor(routerID, report)
 	if execToken == "" {
 		return false, nil
 	}
 
-	panel, report := s.netgripPanelOf(routerID)
 	scheme, addr, client, err := netgripPanelTarget(host, panel, report, 30*time.Second)
 	if err != nil {
 		log.Printf("[netpulse] NetGrip: %v", err)
