@@ -258,6 +258,14 @@ passive listener from reading the token off each delegated plan.
 on `-https`, reports its port but not its scheme, and a new NetPulse would send
 the token to that TLS port in plain http.
 
+**MQTT propagation rides the same path.** Upstream's "Propagate to NetGrip"
+(#843) sends the broker's host, user and **password** to each NetGrip router
+as an `mqtt.configure` operation through `applyViaNetGrip`. Upstream sends it
+over plain http to port 8080; here it takes the reported port and scheme and
+the pinned connection, and every doubtful case sends nothing - the password
+included. Upstream also added an SSH fallback for reading the executor token
+(`netgripExecutorToken`), which leaves this unchanged.
+
 Note that `applyViaNetGrip` only runs for routers registered over SSH:
 `hostOfRouter` returns nothing for an `agent_only` router, whose plans already
 travel over the agent's channel. The standalone `netpulse-agent` binary has
