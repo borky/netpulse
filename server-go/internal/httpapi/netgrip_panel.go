@@ -31,8 +31,9 @@ package httpapi
 //
 // Every doubtful case sends nothing: a report from the router's own agent that
 // is no longer fresh, or a panel on HTTPS with no key to pin. A router whose
-// agent has never reported keeps upstream's behaviour. The plan then falls back to
-// the agent's own channel, exactly as when the panel does not answer.
+// agent has never reported keeps upstream's behaviour, but without the SSH
+// token fallback (see netgripTokenFor). The plan then falls back to the
+// agent's own channel, exactly as when the panel does not answer.
 
 import (
 	"crypto/sha256"
@@ -122,6 +123,30 @@ func (s *server) persistedPanelReport(routerID string) panelReport {
 	default:
 		return staleReport
 	}
+}
+
+// netgripTokenFor is the executor token to send to routerID's panel, given
+// what its agent has reported.
+//
+// Upstream's netgripExecutorToken falls back to reading the token over SSH,
+// and stores what it reads. For a router whose agent has never reported, that
+// fallback would put a token on upstream's plain-http path that nothing put
+// there before: every other way a token is stored comes from an agent, which
+// leaves a report behind. So a router with no report gets only a token that
+// was already stored, as before the fallback existed, and a router with a
+// report gets the fallback too, since its token then goes through the pinned
+// path. Once stored, a token fetched over SSH looks like any other, which is
+// why the check is on the report and not on where the token came from.
+func (s *server) netgripTokenFor(routerID string, report panelReport) string {
+	if report != noAgent {
+		return s.netgripExecutorToken(routerID)
+	}
+	if s.db == nil {
+		return ""
+	}
+	var token string
+	_ = s.db.QueryRow("SELECT value FROM kv WHERE key = ?", "netgrip.executor_token."+routerID).Scan(&token)
+	return token
 }
 
 // netgripPanelTarget is the scheme, address and client for a request to the
