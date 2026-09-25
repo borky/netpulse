@@ -3,6 +3,9 @@
 package reinstall_test
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -127,8 +130,6 @@ func TestTokenPushScriptConfig(t *testing.T) {
 	for _, want := range []string{
 		"/etc/netpulse-agent.env",
 		"NETPULSE_TOKEN=" + strings.Repeat("c3", 32),
-		"sed -n 's/^NETPULSE_SERVER=//p' \"$ENV_FILE\"",
-		"sed -n 's/^NETPULSE_SLUG=//p' \"$ENV_FILE\"",
 		"chmod 600 \"$ENV_FILE.tmp\"",
 		"mv -f \"$ENV_FILE.tmp\" \"$ENV_FILE\"",
 		"\"$INIT\" restart",
@@ -160,5 +161,44 @@ func TestScriptEmptyDigestSkipsVerify(t *testing.T) {
 	}
 	if !strings.Contains(s, `if [ -n "$SHA256" ]; then`) {
 		t.Error("la verificación debe estar protegida contra digest vacío")
+	}
+}
+
+// FORK: the rotation runs for real against a copy of an agent's env file.
+// Only the token changes: the server's pin and every other setting stay, and
+// an agent on HTTPS keeps starting after a rotation.
+func TestTokenPushScriptKeepsTheRestOfTheEnv(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, "netpulse-agent.env")
+	before := "NETPULSE_SERVER=https://192.0.2.10:3443\n" +
+		"NETPULSE_SLUG=test-router\n" +
+		"NETPULSE_SERVER_FP=" + strings.Repeat("ab", 32) + "\n" +
+		"NETPULSE_TOKEN=" + strings.Repeat("0f", 32) + "\n" +
+		"NETPULSE_PAIRING_TOKEN=11111111-2222-4333-8444-555555555555\n" +
+		"NETPULSE_INTERVAL=30\n"
+	if err := os.WriteFile(env, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := reinstall.TokenPushScript("test-router", strings.Repeat("c3", 32))
+	s = strings.ReplaceAll(s, "/etc/netpulse-agent.env", env)
+	s = strings.ReplaceAll(s, "/etc/init.d/netpulse-agent", filepath.Join(dir, "no-init"))
+	if out, err := exec.Command("sh", "-c", s).CombinedOutput(); err != nil {
+		t.Fatalf("script failed: %v\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "NETPULSE_SERVER=https://192.0.2.10:3443\n" +
+		"NETPULSE_SLUG=test-router\n" +
+		"NETPULSE_SERVER_FP=" + strings.Repeat("ab", 32) + "\n" +
+		"NETPULSE_INTERVAL=30\n" +
+		"NETPULSE_TOKEN=" + strings.Repeat("c3", 32) + "\n"
+	if string(got) != want {
+		t.Fatalf("env after rotation:\n%s\nwant:\n%s", got, want)
+	}
+	if st, _ := os.Stat(env); st.Mode().Perm() != 0o600 {
+		t.Fatalf("env mode = %v, want 0600", st.Mode().Perm())
 	}
 }
