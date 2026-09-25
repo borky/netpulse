@@ -263,8 +263,19 @@ the token to that TLS port in plain http.
 as an `mqtt.configure` operation through `applyViaNetGrip`. Upstream sends it
 over plain http to port 8080; here it takes the reported port and scheme and
 the pinned connection, and every doubtful case sends nothing - the password
-included. Upstream also added an SSH fallback for reading the executor token
-(`netgripExecutorToken`), which leaves this unchanged.
+included.
+
+**The SSH token fallback needs an agent report.** Upstream (#838) reads a
+missing executor token from the router over SSH, and stores it. For a router
+whose agent has never reported, upstream's plain http to port 8080 applies,
+so that fallback would send a token in clear where nothing was sent before -
+and keep doing so, since the token is then stored. `netgripTokenFor` runs the
+fallback only when the router's agent has reported, so the token goes through
+the pinned path; with no report, only a token already stored is used, as
+before #838. One window remains: NetGrip registers its token alongside the
+agent's first push, so a plan applied before that push has landed still
+takes upstream's path. Nothing leaves unless something answers on port 8080,
+which NetGrip's own default of 8090 does not.
 
 Note that `applyViaNetGrip` only runs for routers registered over SSH:
 `hostOfRouter` returns nothing for an `agent_only` router, whose plans already
