@@ -16,7 +16,9 @@ export interface OnboardingIntakeProps {
   device: ClientDevice | null
   isDemo: boolean
   onClose: () => void
-  onSaved: () => void
+  /** FORK: which choice was made, so the caller can say what actually
+   *  happened. "Leave anonymous" used to report "Device identified". */
+  onSaved: (outcome: 'identified' | 'dismissed') => void
 }
 
 // Alta guiada de un dispositivo desconocido (#772): nombre (known_macs, que
@@ -69,7 +71,7 @@ export function OnboardingIntake({ open, device, isDemo, onClose, onSaved }: Onb
     setError(null)
     try {
       if (isDemo) {
-        onSaved()
+        onSaved('identified')
         onClose()
         return
       }
@@ -111,7 +113,7 @@ export function OnboardingIntake({ open, device, isDemo, onClose, onSaved }: Onb
           return
         }
       }
-      onSaved()
+      onSaved('identified')
       onClose()
     } finally {
       setBusy(false)
@@ -133,7 +135,7 @@ export function OnboardingIntake({ open, device, isDemo, onClose, onSaved }: Onb
           return
         }
       }
-      onSaved()
+      onSaved('dismissed')
       onClose()
     } finally {
       setBusy(false)
@@ -281,7 +283,7 @@ export function OnboardingIntake({ open, device, isDemo, onClose, onSaved }: Onb
                       await planRun?.()
                       setPlan(null)
                       setPlanRun(null)
-                      onSaved()
+                      onSaved('identified')
                       onClose()
                     } finally {
                       setPlanBusy(false)

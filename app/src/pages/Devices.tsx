@@ -1707,9 +1707,9 @@ export default function Devices() {
             setSearchParams(next, { replace: true })
           }
         }}
-        onSaved={() => {
+        onSaved={(outcome) => {
           refresh()
-          showToast(t('devices.onboarding.saved'))
+          showToast(t(outcome === 'dismissed' ? 'devices.onboarding.dismissed' : 'devices.onboarding.saved'))
         }}
       />
 

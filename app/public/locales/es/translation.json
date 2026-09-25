@@ -503,6 +503,7 @@
       "dismiss": "Dejar como anónimo",
       "dismissHint": "Silencia el aviso de nuevo dispositivo para esta MAC sin darle nombre.",
       "saved": "Dispositivo identificado",
+      "dismissed": "Dejado anónimo: su alerta de dispositivo nuevo queda silenciada",
       "saveError": "No se pudo guardar",
       "errorName": "Pon un nombre para identificarlo (o deja el dispositivo como anónimo).",
       "banner_one": "{{count}} dispositivo conectado sin identificar",

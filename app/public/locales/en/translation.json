@@ -503,6 +503,7 @@
       "dismiss": "Leave anonymous",
       "dismissHint": "Silences the new-device alert for this MAC without naming it.",
       "saved": "Device identified",
+      "dismissed": "Left anonymous: its new-device alert is silenced",
       "saveError": "Could not save",
       "errorName": "Enter a name to identify it (or leave the device anonymous).",
       "banner_one": "{{count}} connected device not identified",
