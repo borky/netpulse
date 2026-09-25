@@ -136,3 +136,99 @@ func countAlerts(list []AlertEvent, titlePart string) int {
 	}
 	return n
 }
+
+// TestAgentRegistryMatchRouterRetainedIdentity (#852): un push wireless-only
+// (sin sección system, p. ej. un evento nl80211 de roam) NO debe romper el
+// match por hostname/MAC: es la causa de los "router sin cliente" transitorios
+// en routers agent-only emparejados sin slug exacto.
+func TestAgentRegistryMatchRouterRetainedIdentity(t *testing.T) {
+	reg := NewAgentRegistry(90 * time.Second)
+	now := time.Now()
+	reg.SetClock(func() time.Time { return now })
+
+	pl := testPayload()
+	pl.Router = "flint2"
+	pl.Data.System.Board.Hostname = "flint2"
+	pl.Data.System.BridgeMAC = "94:83:C4:00:00:09"
+	reg.Ingest(pl)
+
+	// Evento nl80211: push rápido wireless-only, sin sección system.
+	ev := testPayload()
+	ev.Router = "flint2"
+	ev.Data.System = nil
+	reg.Ingest(ev)
+
+	cfg := RouterConfig{ID: "gl-inet-gl-mt6000", Name: "flint2", Host: "192.168.10.1"}
+	slug, p, fresh := reg.MatchRouter(cfg, nil)
+	if slug != "flint2" || p == nil || !fresh {
+		t.Fatalf("match por hostname retenido tras push wireless-only: slug=%q fresh=%v p=%v", slug, fresh, p)
+	}
+
+	cfgMac := RouterConfig{ID: "tp-link-eap225-09", Name: "Otro", Host: "192.168.1.9"}
+	macs := map[string]string{cfgMac.ID: "94:83:C4:00:00:09"}
+	slug, p, fresh = reg.MatchRouter(cfgMac, macs)
+	if slug != "flint2" || p == nil || !fresh {
+		t.Fatalf("match por MAC retenida tras push wireless-only: slug=%q fresh=%v p=%v", slug, fresh, p)
+	}
+}
+
+// TestAgentRegistryRestoreBackfillsIdentity (#852): los estados persistidos
+// antes del fix no traen Host/BridgeMAC; Restore los recupera del payload.
+func TestAgentRegistryRestoreBackfillsIdentity(t *testing.T) {
+	reg := NewAgentRegistry(90 * time.Second)
+	pl := testPayload()
+	pl.Router = "flint2"
+	pl.Data.System.Board.Hostname = "flint2"
+	reg.Restore("flint2", &AgentState{Payload: pl, LastSeen: time.Now()})
+
+	cfg := RouterConfig{ID: "gl-inet-gl-mt6000", Name: "flint2", Host: "192.168.10.1"}
+	slug, p, fresh := reg.MatchRouter(cfg, nil)
+	if slug != "flint2" || p == nil || !fresh {
+		t.Fatalf("match tras Restore sin Host explícito: slug=%q fresh=%v p=%v", slug, fresh, p)
+	}
+}
+
+// TestLiveAgentDownAgentOnlyIsUrgentRouter (#850): en routers agent-only la
+// caída del agente es el único aviso de una fuente de datos muerta (el poll
+// sirve el payload cacheado y el router nunca llega a marcar offline): la
+// alerta debe ser category router + urgent para pasar los filtros de
+// notificación "solo urgentes del topic router".
+func TestLiveAgentDownAgentOnlyIsUrgentRouter(t *testing.T) {
+	reg := NewAgentRegistry(50 * time.Millisecond)
+	l := newLiveAgentTest(t, reg)
+	cfg := RouterConfig{ID: "patio", Name: "Patio", Host: "127.0.0.1", AgentOnly: true}
+	reg.Ingest(testPayload())
+
+	if _, err := l.pollRouter(t.Context(), cfg); err != nil {
+		t.Fatalf("agente fresco: %v", err)
+	}
+	time.Sleep(60 * time.Millisecond)
+	// Agente expirado pero con payload cacheado: el poll NO falla (sirve lo
+	// cacheado) — la tarjeta sigue "viva" con datos congelados.
+	p, err := l.pollRouter(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("agent-only con payload cacheado no debe fallar el poll: %v", err)
+	}
+	if p == nil {
+		t.Fatal("esperaba datos cacheados del agente")
+	}
+	down := findAlert(l.engine.List(), "Agente caído en Patio")
+	if down == nil {
+		t.Fatalf("alerta de caída esperada: %+v", l.engine.List())
+	}
+	if down.Category != alerts.CatRouter || !down.Urgent || down.Severity != "critical" {
+		t.Fatalf("agent-down agent-only debe ser router/urgent/critical: %+v", down)
+	}
+	if strings.Contains(down.Title, "SSH") {
+		t.Fatalf("agent-only no debe mencionar SSH: %+v", down)
+	}
+	// Recuperación: alerta ok visible en el feed (system:all), sin urgencia.
+	reg.Ingest(testPayload())
+	if _, err := l.pollRouter(t.Context(), cfg); err != nil {
+		t.Fatalf("agente recuperado: %v", err)
+	}
+	ok := findAlert(l.engine.List(), "Agente recuperado en Patio")
+	if ok == nil || ok.Category != alerts.CatSystem || ok.Urgent || ok.Severity != "ok" {
+		t.Fatalf("alerta recuperación agent-only: %+v", ok)
+	}
+}
