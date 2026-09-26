@@ -34,6 +34,7 @@ import type { AlertCategory, AlertConfigLevel, AlertSeverity } from '@/data/type
 import { ALERT_CATEGORIES } from '@/data/alertConfig'
 import { CountUp } from '@/components/CountUp'
 import { EmptyState } from '@/components/EmptyState'
+import { RowAction } from '@/components/RowAction'
 import { SegmentedControl } from '@/components/SegmentedControl'
 import {
   Select,
@@ -271,6 +272,8 @@ interface FeedRowProps {
   action?: { icon: LucideIcon; title: string; onClick: () => void }
 }
 
+// #862: RowAction vive en components/RowAction.tsx (compartido con AlertItem).
+
 function FeedRow({ ev, index, read, expanded, onToggle, reduce, onSilence, onDismiss, action }: FeedRowProps) {
   const { t } = useTranslation()
   const sev = SEVERITY[ev.severity]
@@ -349,33 +352,31 @@ function FeedRow({ ev, index, read, expanded, onToggle, reduce, onSilence, onDis
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setShowSilence((v) => !v) }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-text-primary"
+                  className="rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-text-primary"
                   title={t('alerts.silence')}
                 >
-                  <BellOff className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  <BellOff className="h-4 w-4" strokeWidth={1.75} />
                 </button>
               )}
               {/* #833: acción propia de la alerta (solo cuando aplica) y
-                  limpiar alerta, siempre; iconos con tooltip (title). */}
+                  limpiar alerta, siempre; icono + etiqueta con tooltip. */}
               {action && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); action.onClick() }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-accent"
+                <RowAction
+                  icon={action.icon}
+                  label={action.title}
                   title={action.title}
-                >
-                  <action.icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-                </button>
+                  onClick={(e) => { e.stopPropagation(); action.onClick() }}
+                  className="text-text-muted hover:text-accent"
+                />
               )}
               {onDismiss && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onDismiss(ev.id) }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-text-primary"
+                <RowAction
+                  icon={Eraser}
+                  label={t('alerts.actions.dismiss')}
                   title={t('alerts.actions.dismiss')}
-                >
-                  <Eraser className="h-3.5 w-3.5" strokeWidth={1.75} />
-                </button>
+                  onClick={(e) => { e.stopPropagation(); onDismiss(ev.id) }}
+                  className="text-text-muted hover:text-text-primary"
+                />
               )}
               <span className="font-mono text-caption text-text-muted">{alertRelTime(ev)}</span>
             </span>
@@ -520,7 +521,7 @@ export default function Alerts() {
       return {
         icon: CircleArrowUp,
         title: t('alerts.actions.updateAgent'),
-        onClick: () => navigate('/orchestration'),
+        onClick: () => navigate('/routers#agentes'),
       }
     }
     return undefined
