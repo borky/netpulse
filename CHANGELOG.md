@@ -5,6 +5,18 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.36] - 2026-09-26
+
+### Fixed
+
+- **Reinstalar agente desde la consola contra un servidor HTTPS (#851)**: el script de reinstall (manual y el auto-reinstall del supervisor) generaba el `/etc/netpulse-agent.env` sin `NETPULSE_SERVER_FP`, así que el agente seguía cayendo en el bucle fatal de pinning aunque el servidor usara TLS válido. El servidor deriva ahora el pin SPKI por sí mismo (handshake TLS contra su propia URL pública, con caché) y el env generado lo lleva; la rotación de token en caliente también lo conserva en lugar de perderlo.
+- **Acciones de alertas más visibles (#862)**: las acciones por fila del feed crecen (icono mayor y área de clic más generosa) y muestran su etiqueta de texto al pasar el cursor; el resumen de Inicio reduce cada alerta al título con las mismas acciones, y "Actualizar agente" navega a la sección de agentes de la flota.
+- **El icono personalizado de un cliente no se veía en la tabla de Clientes (#864)**: la tabla de clientes conectados usaba el tipo deducido e ignoraba `iconOverride`; ahora usa el mismo criterio que el resto del panel.
+
+### Added
+
+- **Firmware, uptime y MAC por beacon (#865)**: el datagrama de estado del firmware RTLPlayground lleva ahora versión de firmware, uptime y MAC de la CPU, y NetPulse los ingiere como fuente principal para el switch (con fallback a la consola), de modo que el panel los muestra aunque el sondeo por consola esté deshabilitado.
+
 ## [2.28.35] - 2026-09-25
 
 ### Fixed
