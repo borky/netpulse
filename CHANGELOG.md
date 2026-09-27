@@ -5,6 +5,22 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.37] - 2026-09-27
+
+### Fixed
+
+- **El reinstall del agente pisaba tu configuración (#851)**: el botón "reinstall" de la consola y la rotación de token reescribían `/etc/netpulse-agent.env` desde cero y perdían ajustos añadidos a mano (como `NETPULSE_SCAN_INTERVAL=0`). Ahora conservan cualquier opción que no gestionan, y el env generado documenta las disponibles como valores por defecto comentados.
+- **Watchdog cron retirado de la instalación (#851)**: un reinicio a ciegas cada 2 min no arregla un agente en bucle de crash, solo ensucia el log; la detección efectiva es la del servidor (dead man's switch + alertas). El respawn de procd sigue cubriendo crashes puntuales y el init restaura el binario tras un sysupgrade. Al actualizar se limpia la entrada de cron y el fichero del watchdog de versiones anteriores.
+- **Entrada de cron del watchdog huérfana tras sysupgrade (#879)**: `/etc` sobrevive al sysupgrade pero el binario no, y cron logueaba un comando inexistente cada 2 minutos. El init del agente auto-repara la entrada al arrancar si el watchdog ya no existe.
+- **Las acciones de las alertas no existían en táctil (#862)**: dependían del hover; en móvil y tablet ahora se muestran siempre, con su etiqueta y en su propia línea para no aplastar el título.
+- **El CI inyectaba el tag del agente como versión del servidor (#869)**: los builds de desarrollo reportaban `agent/vX.Y.Z` como versión; ahora solo se consideran tags de release.
+
+### Added
+
+- **Toggle "Sondeo por consola" por switch (#863)**: la consola web del firmware RTLPlayground admite una sola sesión y cada sondeo expulsaba a quien estuviera dentro. Ahora se puede desactivar por switch (Ajustes > Routers); con el beacon v1.3+ los datos de firmware, uptime y MAC siguen llegando por UDP.
+- **Verbosidad por canal de notificación (#874)**: cada canal (ntfy, y la misma palanca para Telegram, webhook y Web Push) decide si recibe solo alertas urgentes (por defecto, sin cambios) o todo lo que pasa el filtro del feed. La tarjeta de ntfy tiene el interruptor.
+- **Canales de notificación documentados (#871)**: las tarjetas de ntfy y Telegram y el README explican que los canales solo llevan alertas urgentes, separado del nivel del feed.
+
 ## [2.28.36] - 2026-09-26
 
 ### Fixed
