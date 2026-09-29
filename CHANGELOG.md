@@ -5,6 +5,25 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.38] - 2026-09-29
+
+### Fixed
+
+- **"Marcar todo como leído" no persistía (#891)**: un snapshot tomado antes de que la petición llegara al servidor podía devolver las alertas a no leído hasta el siguiente ciclo. Ahora el estado leído se re-aplica al confirmarse la operación, y los eventos de alerta por SSE se deduplican por ID (ya no duplican filas ni inflan el contador).
+- **Los pushes salían siempre en español (#888)**: las alertas se componen en español y la web las traduce por usuario, pero ntfy, Telegram y webhook publicaban el texto en crudo. Ahora se traducen en el servidor al publicar, con los mismos catálogos de la app.
+- **Banner de "agente caído" demasiado drástico tras un reinicio (#887)**: justo después de reiniciar el servidor todos los agentes tardan unos segundos en volver a empujar, y cada tarjeta mostraba "Agent down - reinstálalo". Durante los primeros 90 s tras el arranque se muestra un aviso neutro de espera; el banner drástico se reserva para fallos persistentes.
+- **El parser del env del agente no recortaba comentarios en línea (#883)**: `NETPULSE_SCAN_INTERVAL=0     # nota` tomaba el valor literal y caía en el default de 30 m en vez de desactivar el sondeo. Agente 3.0.3.
+- **La actualización fallaba en instalaciones sin clone git (#897)**: en el layout estable (install.sh / CT) el árbol de fuentes no tiene `.git` y la actualización moría en el paso de fetch. Ahora se resuelve el SHA de main vía `git ls-remote` y el flujo continúa.
+
+### Added
+
+- **Idioma por defecto del servidor para las notificaciones (#889)**: nuevo ajuste server-wide `alerts.lang` (Ajustes > Notificaciones, por defecto inglés) que define en qué idioma se envían los avisos de ntfy, Telegram y webhook, independientemente del idioma de cada cliente.
+- **Visibilidad de la recuperación de agentes (#890)**: todo el proceso de recuperación automática (expiración del TTL, reinicio por SSH, espera de push, rotación de token, escalado a reinstalación y cooldowns) queda registrado en el log con prefijo `supervisor:` / `rearmer:`, y la estrategia completa (cadena de escalado, timeouts y anti-martilleo) está documentada en `docs/AGENTE-OPENWRT.md`.
+
+### Docs
+
+- **Gráfica de historial de estrellas en el README (#881, #882)**.
+
 ## [2.28.37] - 2026-09-27
 
 ### Fixed
