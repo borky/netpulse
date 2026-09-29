@@ -56,6 +56,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/speedtest"
 	"github.com/gnacho/netpulse/server-go/internal/sse"
 	"github.com/gnacho/netpulse/server-go/internal/sshkey"
+	"github.com/gnacho/netpulse/server-go/internal/alertlang"
 	"github.com/gnacho/netpulse/server-go/internal/staticspa"
 	"github.com/gnacho/netpulse/server-go/internal/telegram"
 	"github.com/gnacho/netpulse/server-go/internal/telemetry"
@@ -129,6 +130,7 @@ func main() {
 }
 
 func run() error {
+	serverStarted := time.Now()
 	serverRoot, err := os.Getwd()
 	if err != nil {
 		return err
@@ -370,6 +372,7 @@ func run() error {
 	// la cadena lo empaqueta en la interfaz con tipo pero valor nil → la
 	// interfaz NO es nil y `if n != nil` de notifierChain no lo filtra →
 	// panic al Notify. Filtrar ANTES de empaquetar.
+	var notifyChain alerts.Notifier
 	if pushNotifier != nil || webhookNotifier != nil || telegramNotifier != nil || ntfyNotifier != nil {
 		// #874: el filtro de urgencia vive en cada canal (default: solo
 		// urgentes, comportamiento de siempre). El engine dispara todo lo que
@@ -388,7 +391,7 @@ func run() error {
 		if ntfyNotifier != nil {
 			chain = append(chain, urgencyGate{n: ntfyNotifier, kv: kv, key: "ntfy.urgent_only"})
 		}
-		adapter.AlertsEngine().SetNotifier(chain)
+		notifyChain = chain
 	}
 
 	// Dependencia sse↔poller resuelta con un holder (como index.js:40-45).
@@ -407,6 +410,15 @@ func run() error {
 		staticDir = cfg.StaticDir
 	}
 	static := staticspa.New(staticDir)
+
+	// #888/#889: los pushes (ntfy/telegram/webhook/push) salen traducidos al
+	// idioma del ajuste alerts.lang, con los catálogos embebidos del dist.
+	// El wrap debe hacerse DESPUÉS de construir la cadena y de tener el FS.
+	if notifyChain != nil {
+		mainKV := &mainKVAdapter{db: dbHandle.DB}
+		alertlang.SetLocalesFS(staticspa.LocalesFS())
+		adapter.AlertsEngine().SetNotifier(alertlang.Notifier(mainKV, notifyChain))
+	}
 
 	// Actualizador: repoRoot = padre de serverRoot (paridad index.js:49-53).
 	// La versión embebida (httpapi.Version) se usa para comparar contra el
@@ -552,6 +564,9 @@ func run() error {
 		// primer evento pisaría los campos en la UI.
 		p.SetEnrich(func(ov *adapters.Overview) {
 			httpapi.EnrichOverview(dbHandle.DB, stScheduler, ov)
+			// #887: el snapshot SSE también lleva el uptime para la gracia
+			// post-arranque en el frontend.
+			ov.ServerUptimeSec = int64(time.Since(serverStarted).Seconds())
 		})
 		go stScheduler.Start()
 	}
@@ -629,7 +644,7 @@ func run() error {
 			return p.LastOverview()
 		},
 		PollNow: p.PollNow,
-		Started: time.Now(),
+		Started: serverStarted,
 	})
 
 	// Envolver el handler con GET /fingerprint (sin auth) si on-box.
