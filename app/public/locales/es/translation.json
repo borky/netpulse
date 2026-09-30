@@ -41,6 +41,10 @@
     "unreadCount_one": "aviso sin leer",
     "unreadCount_other": "avisos sin leer",
     "viewRouter": "Ver router",
+    "findDevice": "Localizar este dispositivo",
+    "identifyDevice": "Identificar este dispositivo",
+    "connectedTo": "Conectado a",
+    "port": "Puerto",
     "wgPeerCaption": "Peer WireGuard · wg0",
     "reason": {
       "temp": "temperatura",
@@ -285,6 +289,9 @@
       "excellent": "Excelente",
       "good": "Bueno",
       "warning": "Atención",
+      "adguardInactive": "AdGuard inactivo",
+      "routerOffline": "{{name}} offline",
+      "routerTemp": "temp. {{name}}",
       "subscores": {
         "wan": "WAN",
         "wifi": "Wi-Fi",
@@ -328,7 +335,10 @@
     "back": "Atrás",
     "cancel": "Cancelar",
     "loading": "Cargando...",
-    "save": "Guardar"
+    "save": "Guardar",
+    "never": "nunca",
+    "notFound": "Página no encontrada",
+    "tunnelIp": "IP túnel"
   },
   "devices": {
     "badges": {
@@ -363,7 +373,8 @@
       "trafficCurrent": "Tráfico actual",
       "traffic": "Tráfico por cliente",
       "trafficNoSource": "Sin tráfico por cliente: los clientes por cable necesitan nlbwmon en el router (los WiFi usan los contadores de hostapd).",
-      "unfiltered": "Sin filtrar"
+      "unfiltered": "Sin filtrar",
+      "connectedTo": "Conectado a"
     },
     "deviceType": "Tipo de dispositivo",
     "emptyDesc": "Ningún dispositivo coincide con estos filtros.",
@@ -400,6 +411,7 @@
       "auto": "Auto",
       "save": "Guardar",
       "saved": "Dispositivo actualizado",
+      "dismissed": "Dejado anónimo: su alerta de dispositivo nuevo queda silenciada",
       "saveError": "No se pudo guardar — inténtalo de nuevo",
       "banTitle": "Bloquear bandas",
       "banHint": "Próximamente: impedir que se conecte a redes 2.4/5/6 GHz.",
@@ -468,6 +480,7 @@
     },
     "wiredConnection": "Conexión por cable",
     "weakChip": "{{count}} con señal débil",
+    "via": "vía {{name}}",
     "unknownManufacturer": "Desconocido",
     "onboarding": {
       "title": "Identificar dispositivo",

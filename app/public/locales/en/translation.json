@@ -41,6 +41,10 @@
     "unreadCount_one": "unread alert",
     "unreadCount_other": "unread alerts",
     "viewRouter": "View router",
+    "findDevice": "Find this device",
+    "identifyDevice": "Identify this device",
+    "connectedTo": "Connected to",
+    "port": "Port",
     "wgPeerCaption": "WireGuard peer · wg0",
     "reason": {
       "temp": "temperature",
@@ -285,6 +289,9 @@
       "excellent": "Excellent",
       "good": "Good",
       "warning": "Warning",
+      "adguardInactive": "AdGuard inactive",
+      "routerOffline": "{{name}} offline",
+      "routerTemp": "{{name}} temperature",
       "subscores": {
         "wan": "WAN",
         "wifi": "Wi-Fi",
@@ -328,7 +335,10 @@
     "back": "Back",
     "cancel": "Cancel",
     "loading": "Loading...",
-    "save": "Save"
+    "save": "Save",
+    "never": "never",
+    "notFound": "Page not found",
+    "tunnelIp": "Tunnel IP"
   },
   "devices": {
     "badges": {
@@ -363,7 +373,8 @@
       "trafficCurrent": "Current traffic",
       "traffic": "Client traffic",
       "trafficNoSource": "No per-client traffic: wired clients need nlbwmon on the router (WiFi uses hostapd counters).",
-      "unfiltered": "Unfiltered"
+      "unfiltered": "Unfiltered",
+      "connectedTo": "Connected to"
     },
     "deviceType": "Device type",
     "emptyDesc": "No device matches these filters.",
@@ -400,6 +411,7 @@
       "auto": "Auto",
       "save": "Save",
       "saved": "Device updated",
+      "dismissed": "Left anonymous: its new-device alert is silenced",
       "saveError": "Could not save — please try again",
       "banTitle": "Block bands",
       "banHint": "Coming soon: block this device from 2.4/5/6 GHz networks.",
@@ -468,6 +480,7 @@
     },
     "wiredConnection": "Wired connection",
     "weakChip": "{{count}} with weak signal",
+    "via": "via {{name}}",
     "unknownManufacturer": "Unknown",
     "onboarding": {
       "title": "Identify device",
