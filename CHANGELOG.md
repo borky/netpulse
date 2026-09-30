@@ -5,6 +5,31 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.40] - 2026-09-30
+
+### Added
+
+- **HTTPS con autoridad certificadora privada (#937)**: opt-in, con los defaults intactos. Servidor HTTPS con certificado renovable desde Ajustes, CA privada, prueba de clave del servidor al emparejar el agente (pinning de CA, varias claves), cookies separadas HTTP/HTTPS, HSTS solo en respuestas seguras, timeout de escritura SSE y descargas a través del service worker. Adaptado del fork comunitario borky (17 commits, atribuidos).
+- **Filtro All / Online / Offline en Clients, persistente (#923)**: el interruptor "solo online" se convierte en selector de tres estados, guardado junto al resto de preferencias de la página.
+- **Panel en inglés por defecto (#938)**: el idioma por defecto para navegadores nuevos pasa a ser el inglés; el selector sigue igual. Adaptado del fork borky.
+- **A qué AP o switch cuelga cada cliente (#938)**: visible en la lista de dispositivos.
+- **Serie Proxmox del fork borky (#936)**: test de conexión que dice qué ve el token, CTs nombrados con su nombre real, host encontrado por la dirección que el cluster conoce, distinción VM/contenedor (badge "VM" en el mapa), re-clasificación al recibir nombre.
+- **Serie routers/topología/dispositivos del fork borky (#945)**: vecinos ARP no confirmados por el kernel, re-atribución de clientes al borrar un router, conteo de clientes igual que el overview, cada enlace nombra la caja de la que sale y con velocidades medidas, alerta de dispositivo desconocido que dice dónde está y permite identificarlo, emparejamiento de agentes por más que su slug, bocas fantasma DSA eliminadas, uplink marcado en la boca real.
+
+### Fixed
+
+- **La pill "Reconnecting" parpadeaba con TLS (#925)**: ahora solo aparece tras 5 s de caída sostenida del SSE; las reconexiones transitorias se resuelven sin llamar la atención.
+- **Fila de puertos fuera de pantalla en switches grandes (#929)**: el chasis hace wrap cuando hay más de 16 bocas.
+- **Clientes FDB/LLDP no aparecían según la boca (#928, #943)**: el emparejamiento se hacía por id de boca en vez de por interfaz; cualquier boca cuyo id no era su interfaz (WAN "wan" sobre "eth1", PPPoE sobre "lan1") quedaba vacía aunque el vecino estuviera aprendido. Fix del fork borky, atribuido.
+- **SNMP FDB sin diagnóstico (#928)**: el walk del FDB reporta ahora su fuente (dot1d/dot1q), devuelve error real si ambos fallan y el journal registra el conteo de entradas cuando cambia.
+- **"Dejar anónimo" decía "Dispositivo identificado" (#938)**: el toast refleja ahora la elección real.
+- **Clave "Find this device" propia (#938)**: el texto correcto gana sobre "View device".
+
+### Notes
+
+- Agente 3.0.4: la serie de emparejamiento FDB/LLDP y slugs toca el agente; sin cambios funcionales para routers sin esos casos.
+- Adaptado de los forks comunitarios con atribución: borky (Proxmox, UI/i18n, HTTPS/CA, routers/topología), más invitaciones abiertas a contribuciones (UniFi #944, RouterOS #939).
+
 ## [2.28.39] - 2026-09-30
 
 ### Fixed
