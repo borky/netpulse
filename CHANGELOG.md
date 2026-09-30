@@ -30,6 +30,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 - Agente 3.0.4: la serie de emparejamiento FDB/LLDP y slugs toca el agente; sin cambios funcionales para routers sin esos casos.
 - Adaptado de los forks comunitarios con atribución: borky (Proxmox, UI/i18n, HTTPS/CA, routers/topología), más invitaciones abiertas a contribuciones (UniFi #944, RouterOS #939).
 
+Crédito: la serie completa de este release procede del fork de borky (borky-git <borky-git@protonmail.com>): Proxmox (#940), UI/i18n (#941), HTTPS/CA (#942), FDB/LLDP por interfaz (#943), routers/topología/dispositivos (#945) y WAN/VLANs (#946). Los merges #940-#944 y #946 llevan trailer Co-authored-by; el #945 lo omitió por error - el crédito se reconoce aquí nominalmente.
+
 ## [2.28.39] - 2026-09-30
 
 ### Fixed
