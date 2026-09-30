@@ -17,11 +17,15 @@ package httpapi
 import (
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 
+	"github.com/gnacho/netpulse/agent/pairproof"
+
 	"github.com/gnacho/netpulse/server-go/internal/auth"
 	"github.com/gnacho/netpulse/server-go/internal/db"
+	"github.com/gnacho/netpulse/server-go/internal/tlsmode"
 )
 
 const pairingTokenKey = "pairing.token"
@@ -65,7 +69,7 @@ func (s *server) handlePairingToken(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusInternalServerError, "pairing_error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": tok, "server_fp": s.serverFP})
+	writeJSON(w, http.StatusOK, map[string]string{"token": tok, "server_fp": s.fingerprint()})
 }
 
 // handlePairingRotate (POST /api/pairing/rotate): genera un pairing token
@@ -135,6 +139,15 @@ func (s *server) handleAgentPair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	adminToken := stored != "" && subtle.ConstantTimeCompare([]byte(body.PairingToken), []byte(stored)) == 1
+	// FORK: once plain HTTP is being retired, the admin pairing token - which
+	// can create or rotate any agent - is not taken over it: pair over https,
+	// where the agent proves the server's key first (pair/hello). Refusing
+	// cannot un-send it, but keeps anything from relying on it.
+	if adminToken && s.tlsMgr != nil && s.tlsMgr.Enabled() && s.tlsMgr.Mode() != tlsmode.Full && !auth.IsSecureRequest(r) {
+		writeError(w, http.StatusForbidden, "use_https",
+			"pair over https: this server no longer takes its pairing token over plain HTTP")
+		return
+	}
 	if !adminToken {
 		if !s.checkAutoenrollToken(body.PairingToken) {
 			writeError(w, http.StatusUnauthorized, "invalid_pairing_token")
@@ -166,7 +179,60 @@ func (s *server) handleAgentPair(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, pairResponse{
 		Slug:     body.Slug,
 		Token:    token,
-		ServerFP: s.serverFP,
+		ServerFP: s.fingerprint(),
+	})
+}
+
+// handleAgentPairHello (POST /api/agents/pair/hello): FORK. Proves to an
+// agent that the key this server serves is the real server's, so an agent
+// given a pairing token but no pin can learn the pin without trusting
+// whoever answers first. The reply is pairproof.MAC(pairing token, the
+// agent's nonce, our fingerprint); the agent checks it against the chain it
+// was shown (runtime.ProveServerKey). The pairing token itself is never sent
+// to us here, and the reply is useless to anyone who does not hold it.
+//
+// Only the admin pairing token proves anything. The autoenroll token is
+// handed out over UDP to whoever asks, so a MAC keyed with it would prove
+// nothing about who answered.
+func (s *server) handleAgentPairHello(w http.ResponseWriter, r *http.Request) {
+	ip := auth.ClientIP(r)
+	if ok, _ := s.ingestLimit.allow(ip); !ok {
+		writeError(w, http.StatusTooManyRequests, "rate_limited")
+		return
+	}
+	if r.TLS == nil {
+		// Also the answer behind a TLS-terminating proxy: the key the agent
+		// sees is the proxy's, which this server cannot vouch for.
+		writeError(w, http.StatusBadRequest, "use_https",
+			"the server's key can only be proven over a direct https connection to it; "+
+				"behind a TLS-terminating proxy, give the agent NETPULSE_SERVER_FP instead")
+		return
+	}
+	fp := s.fingerprint()
+	if fp == "" {
+		writeError(w, http.StatusConflict, "no_fingerprint",
+			"this server has no key for agents to pin")
+		return
+	}
+	var body struct {
+		Nonce string `json:"nonce"`
+	}
+	if st := readJSONBody(w, r, &body); st != 0 {
+		writeBodyError(w, st, "invalid_body", `expected { "nonce": "<hex>" }`)
+		return
+	}
+	if b, err := hex.DecodeString(body.Nonce); err != nil || len(b) < 16 || len(b) > 64 {
+		writeError(w, http.StatusBadRequest, "invalid_body", "nonce must be 16 to 64 random bytes in hex")
+		return
+	}
+	tok, err := s.getPairingToken()
+	if err != nil || tok == "" {
+		writeError(w, http.StatusInternalServerError, "pairing_error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"server_fp": fp,
+		"mac":       pairproof.MAC(tok, body.Nonce, fp),
 	})
 }
 

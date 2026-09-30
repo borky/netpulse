@@ -74,6 +74,7 @@ import { PALETTES, type PaletteId, type ThemeMode } from '@/lib/theme-boot'
 import TelegramCard from '@/components/TelegramCard'
 import NtfyCard from '@/components/NtfyCard'
 import MqttCard from '@/components/MqttCard'
+import HttpsCard from '@/components/HttpsCard'
 import pkg from '../../package.json'
 
 // ---------------------------------------------------------------------------
@@ -3517,6 +3518,14 @@ function PushNotificationsCard({ reduce, onSaved, compact }: { reduce: boolean; 
         </p>
       )}
 
+      {/* FORK: said, not left blank - over plain HTTP the card used to show
+          nothing at all, and the option looked missing. */}
+      {state === 'insecure' && (
+        <p className="rounded-xl bg-elevated px-3 py-2 text-caption leading-relaxed text-text-muted">
+          {t('settings.push.insecure')}
+        </p>
+      )}
+
       {state === 'demo' && (
         <p className="rounded-xl bg-elevated px-3 py-2 text-caption leading-relaxed text-text-muted">
           {t('settings.push.demoNote')}
@@ -5118,6 +5127,12 @@ export default function Settings() {
           </Card>
         </div>
 
+        {/* FORK: Web Push as its own card in Notifications. It was only a
+            small unlabelled button in About, and absent over plain HTTP. */}
+        <div className="order-61">
+          <PushNotificationsCard reduce={reduce} onSaved={notify} />
+        </div>
+
         {/* Idioma de las notificaciones push (#889): server-wide */}
         {!isDemo && (
           <div className="order-69">
@@ -5306,6 +5321,16 @@ export default function Settings() {
         {!isDemo && auth?.role === 'admin' && (
           <div className="order-120">
             <AdoptionCard />
+          </div>
+        )}
+
+        {/* FORK: HTTPS with the server's private CA, and what plain HTTP may
+            still do (HttpsCard). Admin only, live mode. */}
+        {!isDemo && auth?.role === 'admin' && (
+          <div className="order-121" id="https">
+            <Card title={t('settings.https.title')} caption={t('settings.https.caption')} index={5} reduce={reduce}>
+              <HttpsCard onSaved={notify} />
+            </Card>
           </div>
         )}
 
@@ -5587,9 +5612,9 @@ export default function Settings() {
                   })}
                 </div>
 
-                {/* Push + PWA compactos (issue #156) */}
+                {/* Push + PWA compactos (issue #156). FORK: push moved to its own
+                    card under Notifications; the app install stays here. */}
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <PushNotificationsCard reduce={reduce} onSaved={notify} compact />
                   {!installed && (
                     <Confetti burstKey={confettiKey} reduce={reduce} />
                   )}

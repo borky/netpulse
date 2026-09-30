@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -51,6 +52,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/poller"
 	"github.com/gnacho/netpulse/server-go/internal/push"
 	"github.com/gnacho/netpulse/server-go/internal/rearmer"
+	"github.com/gnacho/netpulse/server-go/internal/reinstall"
 	"github.com/gnacho/netpulse/server-go/internal/roamevents"
 	"github.com/gnacho/netpulse/server-go/internal/routerstore"
 	"github.com/gnacho/netpulse/server-go/internal/speedtest"
@@ -61,6 +63,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/telegram"
 	"github.com/gnacho/netpulse/server-go/internal/telemetry"
 	"github.com/gnacho/netpulse/server-go/internal/tlscert"
+	"github.com/gnacho/netpulse/server-go/internal/tlsmode"
 	"github.com/gnacho/netpulse/server-go/internal/updater"
 	"github.com/gnacho/netpulse/server-go/internal/webhook"
 	"github.com/gnacho/netpulse/server-go/internal/wifisle"
@@ -80,7 +83,10 @@ const (
 
 // isSSEStreamPath devuelve true para los endpoints SSE de larga duración.
 func isSSEStreamPath(p string) bool {
-	if p == "/api/stream" {
+	// FORK: /api/update/stream is an SSE stream too; with the normal write
+	// timeout it was cut every time and the update dialog fell back to
+	// polling.
+	if p == "/api/stream" || p == "/api/update/stream" {
 		return true
 	}
 	return strings.HasPrefix(p, "/api/agents/") && strings.HasSuffix(p, "/stream")
@@ -506,7 +512,13 @@ func run() error {
 	// certs del usuario (NETPULSE_TLS_CERT/NETPULSE_TLS_KEY) se cargan; si no,
 	// se genera un autofirmado en DATA_DIR.
 	var extraTLSConf *tls.Config
-	if cfg.TLSEnabled {
+	// FORK: the fingerprint of a user-supplied certificate, read live (it can
+	// change key on renewal). Set only when the extra listener is the one
+	// agents reach over TLS, i.e. not on-box, where PORT's own certificate is
+	// the one they pin.
+	var serverFPFunc func() string
+	// FORK: with NETPULSE_TLS_CA the extra listener belongs to tlsmode below.
+	if cfg.TLSEnabled && !cfg.TLSCA {
 		certPath := cfg.TLSCert
 		keyPath := cfg.TLSKey
 		userCerts := certPath != "" && keyPath != ""
@@ -525,6 +537,10 @@ func run() error {
 			reloader, err2 = tlscert.NewReloader(certPath, keyPath)
 			if err2 == nil {
 				extraTLSConf = reloader.Config()
+				fp = reloader.Fingerprint()
+				if !cfg.Onbox {
+					serverFPFunc = reloader.Fingerprint
+				}
 			}
 		} else {
 			extraTLSConf, fp, err2 = tlscert.Ensure(certPath, keyPath)
@@ -537,10 +553,60 @@ func run() error {
 			origen = "usuario (recarga en caliente al renovar)"
 		} else {
 			log.Printf("[netpulse] TLS autofirmado: %s", certPath)
-			log.Printf("[netpulse] FINGERPRINT SPKI (sha256): %s", fp)
+		}
+		log.Printf("[netpulse] FINGERPRINT SPKI (sha256): %s", fp)
+		// FORK: agents pin this, so pairing must hand it out. It was only
+		// logged, and pairing returned an empty server_fp in this mode.
+		if !cfg.Onbox && !userCerts {
+			serverFP = fp
 		}
 		log.Printf("[netpulse] HTTPS adicional en :%d (cert %s: %s)", cfg.TLSPort, origen, certPath)
 	}
+
+	// FORK: HTTPS with the server's private CA, managed from Settings > HTTPS
+	// (internal/tlsmode). The environment, when it says anything, wins; on-box
+	// and a certificate of the admin's own keep their own HTTPS as above.
+	// Only an explicit NETPULSE_TLS_ENABLED=1 with NETPULSE_TLS_CA=1 locks
+	// the switch: .env.example ships NETPULSE_TLS_ENABLED=0, which is
+	// upstream's default, not a decision to keep HTTPS off. Recovery never
+	// needs HTTPS forced off here - NETPULSE_HTTP_MODE=full restores plain
+	// HTTP, and a CA that cannot be opened leaves plain HTTP as it was.
+	var tlsEnvEnabled *bool
+	if cfg.TLSEnabled && cfg.TLSCA {
+		on := true
+		tlsEnvEnabled = &on
+	}
+	tlsUnavailable := ""
+	switch {
+	case cfg.Onbox:
+		tlsUnavailable = "on-box, the server's own port already serves HTTPS"
+	case cfg.TLSEnabled && !cfg.TLSCA:
+		tlsUnavailable = "HTTPS is set up in the server's environment with its own certificate"
+	}
+	tlsMgr := tlsmode.New(tlsmode.Options{
+		DB:          dbHandle,
+		DataDir:     cfg.DataDir,
+		Port:        cfg.TLSPort,
+		Names:       cfg.TLSNames,
+		PublicURL:   cfg.PublicURL,
+		EnvEnabled:  tlsEnvEnabled,
+		EnvMode:     tlsmode.Mode(cfg.HTTPMode),
+		Unavailable: tlsUnavailable,
+		NewServer: func(addr string, h http.Handler) *http.Server {
+			return newHTTPServer(addr, withSSEWriteTimeout(h, sseWriteTimeout))
+		},
+		Logf: log.Printf,
+	})
+	if serverFPFunc == nil && serverFP == "" && tlsMgr.Available() {
+		serverFPFunc = tlsMgr.Fingerprint
+	}
+	legacyFP := func() string {
+		if serverFPFunc != nil {
+			return serverFPFunc()
+		}
+		return serverFP
+	}
+	arm.SetTrust(func(base string) reinstall.Trust { return tlsmode.AgentTrust(tlsMgr, legacyFP, base) })
 
 	// Speedtest WAN periódico (#511): store + runner + scheduler. Las
 	// alertas de "velocidad por debajo del plan" se emiten por el MISMO
@@ -629,6 +695,8 @@ func run() error {
 		Rearmer:         arm,
 		AgentHub:        agentHub,
 		ServerFP:        serverFP,
+		ServerFPFunc:    serverFPFunc,
+		TLS:             tlsMgr,
 		Orchestr:        orchMgr,
 		MQTT:            mqttMgr,
 		TokenStore:      tokenStore,
@@ -648,18 +716,33 @@ func run() error {
 	})
 
 	// Envolver el handler con GET /fingerprint (sin auth) si on-box.
-	if cfg.Onbox {
-		fp := serverFP
+	// FORK: and whenever the extra TLS listener is up, which serves TLS too.
+	if cfg.Onbox || extraTLSConf != nil || tlsMgr.Available() {
+		fp := func() string { return serverFP }
+		if serverFPFunc != nil {
+			fp = serverFPFunc
+		}
 		fpMux := http.NewServeMux()
-		fpMux.HandleFunc("GET /fingerprint", func(w http.ResponseWriter, _ *http.Request) {
+		fpMux.HandleFunc("GET /fingerprint", func(w http.ResponseWriter, r *http.Request) {
+			v := fp()
+			if v == "" { // HTTPS is off: there is nothing to pin
+				http.NotFound(w, r)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"spki_sha256":%q}`, fp)
+			fmt.Fprintf(w, `{"spki_sha256":%q}`, v)
 		})
 		fpMux.Handle("/", handler)
 		handler = fpMux
 	}
 
-	srv := newHTTPServer(fmt.Sprintf(":%d", cfg.Port), withSSEWriteTimeout(handler, sseWriteTimeout))
+	// FORK: the TLS listener, when HTTPS is on, serves the same handler.
+	if err := tlsMgr.Start(handler); err != nil {
+		return fmt.Errorf("HTTPS: %w", err)
+	}
+	defer tlsMgr.Close()
+	// FORK: on the plain port, what the HTTP mode allows (a no-op in full).
+	srv := newHTTPServer(fmt.Sprintf(":%d", cfg.Port), withSSEWriteTimeout(tlsMgr.PlainHandler(handler), sseWriteTimeout))
 
 	// Listener HTTPS adicional (#696): mismo handler y timeouts que el HTTP.
 	var tlsSrv *http.Server
@@ -693,7 +776,14 @@ func run() error {
 		if cfg.Onbox {
 			errCh <- srv.ListenAndServeTLS("", "")
 		} else {
-			errCh <- srv.ListenAndServe()
+			// FORK: through the sniffing listener, so a browser upgraded to
+			// https on this port by an HSTS policy is still served.
+			ln, err := net.Listen("tcp", srv.Addr)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			errCh <- srv.Serve(tlsMgr.SniffListener(ln))
 		}
 	}()
 

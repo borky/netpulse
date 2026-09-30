@@ -48,6 +48,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/speedtest"
 	"github.com/gnacho/netpulse/server-go/internal/sse"
 	"github.com/gnacho/netpulse/server-go/internal/staticspa"
+	"github.com/gnacho/netpulse/server-go/internal/tlsmode"
 	"github.com/gnacho/netpulse/server-go/internal/updater"
 	"github.com/gnacho/netpulse/server-go/internal/wifisle"
 )
@@ -91,6 +92,14 @@ type Deps struct {
 	// ServerFP: fingerprint SPKI del servidor (hex). Vacío si no es on-box.
 	// Se devuelve en /api/agents/pair para que el agentepine el TLS.
 	ServerFP string
+	// FORK: TLS is the HTTPS manager (private CA, plain-HTTP mode) behind
+	// Settings > HTTPS. nil: no such settings, and HSTS follows the legacy
+	// rule below.
+	TLS *tlsmode.Manager
+	// FORK: ServerFPFunc, when set, is read on every request and wins over
+	// ServerFP: a user-supplied certificate can change key on renewal, and a
+	// fingerprint captured at start-up would hand agents a stale pin.
+	ServerFPFunc func() string
 	// Orchestr: motor de plan/apply (Fase 10). nil → sin rutas /api/plans.
 	Orchestr *orchestr.Manager
 	// MQTT: publisher de flota MQTT (#838). nil → las rutas de ajustes MQTT
@@ -146,6 +155,11 @@ type server struct {
 
 	// Fingerprint SPKI del servidor (vacío si no es on-box).
 	serverFP string
+	// FORK: see Deps.ServerFPFunc.
+	serverFPFunc func() string
+	// FORK: see Deps.TLS; agentTransport is each agent's last transport.
+	tlsMgr         *tlsmode.Manager
+	agentTransport sync.Map // slug -> agentTransport
 
 	// Anti-martilleo de POST /api/refresh (global, min 5 s entre sondeos).
 	refreshMu   sync.Mutex
@@ -238,6 +252,8 @@ func NewHandler(d Deps) http.Handler {
 		lastOv: d.LastOverview, pollNow: d.PollNow, started: d.Started,
 		agentHub:        d.AgentHub,
 		serverFP:        d.ServerFP,
+		serverFPFunc:    d.ServerFPFunc,
+		tlsMgr:          d.TLS,
 		ingestLimit:     newIPRateLimit(ingestRateLimit, ingestRateWindow),
 		upgrades:        newUpgradeTracker(),
 		tokenStore:      d.TokenStore,
@@ -444,6 +460,8 @@ func NewHandler(d Deps) http.Handler {
 	// --- Fase 9 R3: Pairing / adopción de agentes ---
 	// POST /api/agents/pair: sin sesión (el pairing token ES la auth), rate limited.
 	mux.HandleFunc("POST /api/agents/pair", s.handleAgentPair)
+	// FORK: POST /api/agents/pair/hello: proves the served key, no session.
+	mux.HandleFunc("POST /api/agents/pair/hello", s.handleAgentPairHello)
 	// Gestión del pairing token (admin).
 	mux.Handle("GET /api/pairing/token", auth.RequireAdmin(http.HandlerFunc(s.handlePairingToken)))
 	mux.Handle("POST /api/pairing/rotate", auth.RequireAdmin(http.HandlerFunc(s.handlePairingRotate)))
@@ -537,7 +555,8 @@ func NewHandler(d Deps) http.Handler {
 	if s.tokenStore != nil {
 		tv = s.tokenStore
 	}
-	return requestID(security.Middleware(auth.RequireSameOrigin(auth.RequireAuth(s.db, s.secret, tv, s.demoReadOnly(noStoreMux(mux))))))
+	s.registerHTTPS(mux)
+	return requestID(security.Middleware(s.hsts, auth.RequireSameOrigin(auth.RequireAuth(s.db, s.secret, tv, s.demoReadOnly(noStoreMux(mux))))))
 }
 
 // requestID lee o genera un x-request-id para cada petición y lo expone en
@@ -749,4 +768,13 @@ func (s *server) handleConfigBackupDelete(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// fingerprint is the SPKI fingerprint agents should pin, or "" when this
+// server serves no TLS.
+func (s *server) fingerprint() string {
+	if s.serverFPFunc != nil {
+		return s.serverFPFunc()
+	}
+	return s.serverFP
 }

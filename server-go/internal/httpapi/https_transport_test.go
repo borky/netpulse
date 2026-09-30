@@ -1,0 +1,67 @@
+package httpapi
+
+// FORK: tests for the record of how each agent reports (https_settings.go).
+
+import (
+	"testing"
+	"time"
+
+	"github.com/gnacho/netpulse/server-go/internal/adapters"
+	"github.com/gnacho/netpulse/server-go/internal/db"
+)
+
+// panelTestServer is the minimum the HTTPS tests read: a database and the
+// agent registry. (From the fork's netgrip_panel_test.go helper, kept here so
+// the HTTPS tests do not drag in the whole NetGrip-panel integration.)
+func panelTestServer(t *testing.T) *server {
+	t.Helper()
+	d, err := db.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("db: %v", err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	return &server{db: d, agents: adapters.NewAgentRegistry(90 * time.Second)}
+}
+
+func TestAgentsOnHTTPSurviveARestartAndForgetTheDeleted(t *testing.T) {
+	s := panelTestServer(t)
+	for _, slug := range []string{"router-a", "router-b", "router-c"} {
+		if _, err := s.db.Exec("INSERT INTO kv (key, value) VALUES (?, 'h')", agentTokenKey(slug)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.noteAgentTransport("router-a", false)
+	s.noteAgentTransport("router-b", true)
+	s.noteAgentTransport("router-c", false)
+	// A later push over the other transport is what counts.
+	s.noteAgentTransport("router-c", true)
+
+	// A restarted server - same database, empty memory - still knows.
+	restarted := &server{db: s.db}
+	got := restarted.agentsOnHTTP()
+	if len(got) != 1 || got[0].Slug != "router-a" {
+		t.Fatalf("after a restart, on HTTP: %+v", got)
+	}
+	if tls := restarted.agentsByTransport(true); len(tls) != 2 {
+		t.Fatalf("after a restart, on HTTPS: %+v", tls)
+	}
+
+	// A deleted agent drops out.
+	if _, err := s.db.Exec("DELETE FROM kv WHERE key = ?", agentTokenKey("router-a")); err != nil {
+		t.Fatal(err)
+	}
+	if got := restarted.agentsOnHTTP(); len(got) != 0 {
+		t.Fatalf("a deleted agent is still listed: %+v", got)
+	}
+}
+
+func TestASilentAgentDropsOut(t *testing.T) {
+	s := panelTestServer(t)
+	if _, err := s.db.Exec("INSERT INTO kv (key, value) VALUES (?, 'h')", agentTokenKey("router-a")); err != nil {
+		t.Fatal(err)
+	}
+	s.agentTransport.Store("router-a", agentTransport{TLS: false, At: time.Now().Add(-agentTransportWindow - time.Minute)})
+	if got := s.agentsOnHTTP(); len(got) != 0 {
+		t.Fatalf("an agent silent for over a day is listed: %+v", got)
+	}
+}
