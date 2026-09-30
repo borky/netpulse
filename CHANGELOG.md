@@ -5,6 +5,26 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.39] - 2026-09-30
+
+### Fixed
+
+- **No se podía seleccionar °F en Ajustes (#898)**: la unidad se guardaba en localStorage con comillas y la lectura nunca coincidía. Ahora persiste y se aceptan los valores antiguos.
+- **Notación decimal europea en los totales WAN (#899)**: las tarjetas "TOTAL 24H" y "TOTAL TODAY" formateaban server-side con coma fija. Ahora el servidor manda bytes crudos y el cliente formatea con el locale activo, igual que las tasas.
+- **La leyenda de la matriz de señal no coincidía con los umbrales reales (#905)**: reescrita sin operadores sobre valores negativos ("-65 dBm o mejor", etc.), exacta respecto al código.
+- **El filtro DAWN en la tabla de eventos con redes usteer (#909)**: la opción DAWN solo aparece cuando la red tiene routers con DAWN.
+- **Los eventos de conexión no aparecían en la tabla (#908)**: el parser de logread no aceptaba el formato más común de hostapd ("wlan0: AP-STA-CONNECTED <mac>", con la iface una sola vez). Ahora cubre todas las variantes observadas, con sufijos de motivo incluidos.
+- **Los pushes llevaban una hora estática (16:00:00) (#914)**: el notifier recibía el evento con timestamp 0 (epoch en la zona del usuario). Emit/EmitNoDedup ahora rellenan Ts antes de notificar, con test de regresión.
+- **La alerta "Agente desactualizado" se repetía cada 30 s (#910)**: se reenviaba con cada push del agente y refrescaba su timestamp. Ahora solo se reemite cuando la versión observada o la de referencia cambian, como la alerta de caída.
+- **La contraseña inicial del instalador tenía caracteres ambiguos (#895)**: el alfabeto base64 incluía 0/O y 1/l/I, indistinguibles en muchas fuentes de terminal. Ahora se genera sin ellos (~94 bits de entropía mantenidos).
+
+### Added
+
+- **Umbral "Weak signal" server-wide (#904)**: el ajuste de Ajustes ahora vive en el servidor (kv, default -70 dBm) y alimenta la alerta de señal débil, igual para todos los clientes. Antes solo pintaba un caption local.
+- **El filtro "Solo señal débil" de la matriz usa ese umbral (#906)** y el rótulo muestra el valor efectivo ("peor que X dBm"), evitando la ambigüedad del "<" sobre valores negativos.
+- **Intervalo de ingesta de eventos de roaming configurable (#907)**: nuevo ajuste (Ajustes > Datos y umbrales) con la cadencia del collector de logread (default 60 s), aplicado sin reiniciar. La cabecera de la tabla de eventos muestra los valores reales configurados (retención e intervalo) en vez de texto fijo.
+- **Toggle "Solo no leídas" en la tarjeta de Alertas del Overview (#916)**: mantiene la vista limpia en operación normal; la preferencia persiste en el navegador.
+
 ## [2.28.38] - 2026-09-29
 
 ### Fixed
