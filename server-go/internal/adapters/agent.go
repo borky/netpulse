@@ -615,6 +615,28 @@ func (l *Live) polledFromAgent(cfg RouterConfig, p *probe.Payload) *routerPolled
 			out.arpStale[strings.ToUpper(mac)] = true
 		}
 	}
+	// Wan (#276): el agente lo trae en el payload desde 2.28.24+. Antes solo
+	// existía la sonda SSH del server, que en un router agent_only no corre
+	// nunca -- y su panel de conexión se quedaba vacío.
+	if w := p.Data.Wan; w != nil {
+		out.wanInfo = *w
+	}
+	// MultiWan: the several internet connections and which one carries
+	// traffic. Only a router whose own panel manages them reports it; an
+	// event-driven push carries no section, so the last good one is kept
+	// or the panel would blink out between full pushes.
+	out.multiWan = normalizeMultiWan(p.Data.MultiWan)
+	if out.multiWan == nil && cached != nil {
+		out.multiWan = cached.multiWan
+	}
+	// Vlans travel in the payload too, and were being dropped here: a
+	// router polled through its agent never reached the SSH path that is
+	// the only other place they are read, so its VLAN panel stayed empty.
+	if len(p.Data.Vlans) > 0 {
+		out.vlans = p.Data.Vlans
+	} else if cached != nil {
+		out.vlans = cached.vlans
+	}
 	if fd := p.Data.FDB; fd != nil {
 		if fd.MACs != nil {
 			out.fdb = fd.MACs
@@ -749,7 +771,7 @@ func (l *Live) polledFromAgent(cfg RouterConfig, p *probe.Payload) *routerPolled
 	}
 	l.extrasCache[cfg.ID] = &extrasSnapshot{ports: out.ports, radios: out.radios,
 		wireless: out.wireless, fdb: out.fdb, luci: out.luci, system: sysSnap, lldp: lldpSnap,
-		clientBw: out.clientBw}
+		clientBw: out.clientBw, vlans: out.vlans, multiWan: out.multiWan}
 	l.mu.Unlock()
 
 	// Solo con un payload NUEVO alimentamos las series y el monitor de

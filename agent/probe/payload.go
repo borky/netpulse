@@ -17,8 +17,12 @@ type Payload struct {
 	// Interval declara la cadencia de push en SEGUNDOS (#288). 0 = default
 	// del agente nativo (~30 s). Un pusher externo que empuja cada 5 min
 	// declara 300 y el server amplía su TTL a 3x ese intervalo.
-	Interval int         `json:"interval,omitempty"`
-	Data     PayloadData `json:"data"`
+	Interval int `json:"interval,omitempty"`
+	// PanelPort: the port the embedder's own web panel listens on, so
+	// anything linking to it does not have to guess. 0 = no panel, or an
+	// agent that does not report one.
+	PanelPort int         `json:"panelPort,omitempty"`
+	Data      PayloadData `json:"data"`
 }
 
 // PayloadData agrupa las secciones del tier rápido. Punteros/mapas nil =
@@ -40,9 +44,9 @@ type PayloadData struct {
 	// kernel keeps a stale neighbour long after the device has gone. An
 	// older agent omits this, and the server then trusts the whole table as
 	// it always did.
-	ArpStale []string `json:"arpStale,omitempty"`
-	Dawn   *DawnData         `json:"dawn,omitempty"`   // Fase 14: DAWN roaming (solo si instalado; compat rollback)
-	Usteer *UsteerData       `json:"usteer,omitempty"` // usteer roaming (solo si instalado)
+	ArpStale []string    `json:"arpStale,omitempty"`
+	Dawn     *DawnData   `json:"dawn,omitempty"`   // Fase 14: DAWN roaming (solo si instalado; compat rollback)
+	Usteer   *UsteerData `json:"usteer,omitempty"` // usteer roaming (solo si instalado)
 	// LuCI: etiquetas de puertos/VLANs del router (issue #258), si están
 	// definidas en /etc/config/luci.
 	LuCI *LuCILabels `json:"luci,omitempty"`
@@ -68,6 +72,16 @@ type PayloadData struct {
 	// propias entidades y comandos); nil = no aplica (agente standalone) u
 	// omitido por el embedder; Enabled=false = informado pero apagado.
 	MQTT *MQTTData `json:"mqtt,omitempty"`
+	// Wan: estado del uplink (proto, IP pública, gateway, DNS y la boca por
+	// la que sale). El servidor lo sondeaba por SSH solo en el gateway, vía
+	// que no existe en un router agent_only: sin esto su panel de conexión
+	// se queda vacío. nil = sonda fallida o router sin uplink (AP).
+	Wan *WanInfo `json:"wan,omitempty"`
+	// MultiWan: the uplink policy the router's own panel manages — which
+	// connections exist, which one carries traffic, how the load is split.
+	// Read-only here. nil = this router reports no multi-WAN, which is also
+	// what an older agent sends.
+	MultiWan *MultiWanInfo `json:"multiWan,omitempty"`
 }
 
 // MQTTData: exposición propia del equipo a Home Assistant por MQTT (#832).

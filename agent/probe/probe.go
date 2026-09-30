@@ -146,6 +146,10 @@ const (
 	// y saber por qué boca sale internet.
 	CmdNetworkDump = "ubus call network.interface dump 2>/dev/null || true"
 	CmdBridgeVlan  = "bridge vlan show 2>/dev/null || true"
+	// CmdUciBridgeVlan: the VLANs as configured, for the routers whose
+	// firmware carries no `bridge` binary — an optional package, and
+	// absent on plenty of boards that do use VLANs.
+	CmdUciBridgeVlan = `uci -q show network 2>/dev/null | grep -E "=bridge-vlan$|\.(device|vlan|ports)=" || true`
 
 	// CmdMdnsBrowse (#338): mDNS service discovery via umdns (OpenWrt's
 	// lightweight mDNS daemon). Returns JSON with hostname -> services.
@@ -540,7 +544,12 @@ type ifaceStatus struct {
 	L3Device  string `json:"l3_device"`
 	// Device es la interfaz de debajo: para un PPPoE, la boca física.
 	Device string `json:"device"`
-	IPV4   []struct {
+	// Dynamic marks an interface netifd created itself — the DHCP child of
+	// a modem uplink, the DHCPv6 side of a PPPoE one. It holds the address
+	// and the route its parent has none of, and cannot be configured or
+	// named in a policy, so it is only ever read through its parent.
+	Dynamic bool `json:"dynamic"`
+	IPV4    []struct {
 		Address    string `json:"address"`
 		PtpAddress string `json:"ptpaddress"`
 	} `json:"ipv4-address"`
@@ -569,6 +578,27 @@ func (s ifaceStatus) defaultNexthop() string {
 // router normal con el enlace caído siga saliendo como WAN caída y no como
 // router sin WAN.
 func pickUplink(ifaces []ifaceStatus) (ifaceStatus, bool) {
+	return pickUplinkPreferring(ifaces, "")
+}
+
+// pickUplinkPreferring is pickUplink with the answer supplied from outside.
+//
+// A policy manager (mwan3) steers with packet marks and leaves the routes
+// alone, so the default route still points at the standby link while every
+// packet leaves by another one. When something knows which uplink is really
+// carrying traffic, that wins; everything else falls through to the route.
+func pickUplinkPreferring(ifaces []ifaceStatus, preferred string) (ifaceStatus, bool) {
+	if preferred != "" {
+		for _, i := range ifaces {
+			if i.Interface != preferred {
+				continue
+			}
+			i = withChildFacts(i, ifaces)
+			if len(i.IPV4) > 0 || i.defaultNexthop() != "" {
+				return i, true
+			}
+		}
+	}
 	for _, i := range ifaces {
 		if i.Up && i.defaultNexthop() != "" {
 			return i, true
@@ -580,6 +610,31 @@ func pickUplink(ifaces []ifaceStatus) (ifaceStatus, bool) {
 		}
 	}
 	return ifaceStatus{}, false
+}
+
+// withChildFacts gives an interface whatever netifd spawned underneath it.
+// A modem uplink keeps neither address nor route of its own: the child
+// sharing its layer-3 device holds both, and reporting the parent without
+// them would describe a connection with nothing on it.
+func withChildFacts(parent ifaceStatus, ifaces []ifaceStatus) ifaceStatus {
+	if parent.Dynamic || parent.L3Device == "" {
+		return parent
+	}
+	for _, c := range ifaces {
+		if !c.Dynamic || c.Interface == parent.Interface || c.L3Device != parent.L3Device {
+			continue
+		}
+		if len(parent.IPV4) == 0 {
+			parent.IPV4 = c.IPV4
+		}
+		if len(parent.Route) == 0 {
+			parent.Route = c.Route
+		}
+		if len(parent.DNS) == 0 {
+			parent.DNS = c.DNS
+		}
+	}
+	return parent
 }
 
 func wanInfoFrom(s ifaceStatus) WanInfo {
@@ -603,11 +658,18 @@ func wanInfoFrom(s ifaceStatus) WanInfo {
 // interfaz L3, boca física, IP pública, gateway y DNS; campos vacíos si el
 // JSON no trae datos utilizables.
 func ParseWanStatus(raw []byte) WanInfo {
+	return ParseWanStatusPreferring(raw, "")
+}
+
+// ParseWanStatusPreferring is ParseWanStatus told which uplink is carrying
+// traffic (see pickUplinkPreferring). An empty name behaves exactly as
+// before.
+func ParseWanStatusPreferring(raw []byte, preferred string) WanInfo {
 	var dump struct {
 		Interface []ifaceStatus `json:"interface"`
 	}
 	if err := json.Unmarshal(raw, &dump); err == nil && len(dump.Interface) > 0 {
-		s, ok := pickUplink(dump.Interface)
+		s, ok := pickUplinkPreferring(dump.Interface, preferred)
 		if !ok {
 			return WanInfo{}
 		}
@@ -1777,4 +1839,107 @@ func allDigits(s string) bool {
 		}
 	}
 	return s != ""
+}
+
+// ParseUciBridgeVlans reads the bridge VLANs out of `uci show network`.
+//
+// `bridge vlan show` is the truth, but its binary is part of an optional
+// package and plenty of routers do not carry it — including ones with VLANs
+// configured, where the panel then shows nothing at all. The declared
+// configuration is the next best answer: it is what the router was told to
+// do, and on a healthy box it is what the kernel is doing.
+//
+// A bridge-vlan section names a device, a VLAN id and its ports, each port
+// written "<port>[:u|:t][*]": ":t" tagged, ":u" untagged, a trailing "*"
+// marking the port's own ingress VLAN.
+func ParseUciBridgeVlans(out string) []VlanPort {
+	type section struct {
+		vlan  int
+		ports []string
+	}
+	sections := map[string]*section{}
+	order := []string{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "network.") {
+			continue
+		}
+		key, val, ok := strings.Cut(strings.TrimPrefix(line, "network."), "=")
+		if !ok {
+			continue
+		}
+		val = strings.Trim(val, "'")
+		name, attr, isAttr := strings.Cut(key, ".")
+		if !isAttr {
+			if val == "bridge-vlan" {
+				if _, seen := sections[name]; !seen {
+					sections[name] = &section{}
+					order = append(order, name)
+				}
+			}
+			continue
+		}
+		sec, ok := sections[name]
+		if !ok {
+			continue
+		}
+		switch attr {
+		case "vlan":
+			if id, err := strconv.Atoi(val); err == nil {
+				sec.vlan = id
+			}
+		case "ports":
+			// A list option prints all its values on one line, each in
+			// its own quotes.
+			for _, part := range strings.Split(val, "' '") {
+				if p := strings.TrimSpace(strings.Trim(part, "'")); p != "" {
+					sec.ports = append(sec.ports, p)
+				}
+			}
+		}
+	}
+
+	// Group by port, the way `bridge vlan show` reports it: the panel is a
+	// list of ports, each with the VLANs it carries.
+	byPort := map[string][]VlanEntry{}
+	portOrder := []string{}
+	for _, name := range order {
+		sec := sections[name]
+		if sec.vlan < 1 || sec.vlan > 4094 {
+			continue
+		}
+		for _, raw := range sec.ports {
+			port, entry := parseUciVlanPort(raw, sec.vlan)
+			if port == "" {
+				continue
+			}
+			if _, seen := byPort[port]; !seen {
+				portOrder = append(portOrder, port)
+			}
+			byPort[port] = append(byPort[port], entry)
+		}
+	}
+	out2 := make([]VlanPort, 0, len(portOrder))
+	for _, port := range portOrder {
+		out2 = append(out2, VlanPort{Port: port, Vlans: byPort[port]})
+	}
+	return out2
+}
+
+// parseUciVlanPort splits one "<port>[:u|:t][*]" entry.
+func parseUciVlanPort(raw string, vlan int) (string, VlanEntry) {
+	name := raw
+	entry := VlanEntry{ID: vlan}
+	if strings.HasSuffix(name, "*") {
+		entry.PVID = true
+		name = strings.TrimSuffix(name, "*")
+	}
+	switch {
+	case strings.HasSuffix(name, ":t"):
+		entry.Tagged = true
+		name = strings.TrimSuffix(name, ":t")
+	case strings.HasSuffix(name, ":u"):
+		name = strings.TrimSuffix(name, ":u")
+	}
+	return name, entry
 }

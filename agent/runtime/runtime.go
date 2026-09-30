@@ -56,6 +56,22 @@ type Options struct {
 	// binario standalone sobre un NetGrip.
 	Kind string
 
+	// PanelPort is the port the embedder's own web panel listens on. It
+	// travels with every push so the monitoring side can link to it
+	// instead of assuming a default that is wrong as often as not.
+	PanelPort int
+
+	// MultiWan lets an embedder (the NetGrip panel) report the uplink policy
+	// it manages: which connections exist, which one carries traffic, how
+	// the load is split. nil = nothing to report, and the payload then
+	// carries no multi-WAN section at all.
+	//
+	// Called once per full poll. The wireless event push deliberately skips
+	// it: an absent section means "no news" to the server, not "no policy",
+	// and re-probing the policy on every association would cost more than
+	// it tells anyone.
+	MultiWan func() *probe.MultiWanInfo
+
 	// OnStatus recibe el estado en cada cambio (arranque, cada push, parada).
 	// Nunca rompe el bucle: un panic dentro del callback se recupera.
 	OnStatus func(Status)
@@ -119,10 +135,22 @@ func Run(ctx context.Context, opts Options) error {
 	log := opts.logger()
 	client.SetLogger(func(format string, args ...any) { log.Debug("[netpulse-agent] " + fmt.Sprintf(format, args)) })
 
+	// lastMultiWan is read by the prober while it builds the WAN section, so
+	// the address reported belongs to the connection the policy is using.
+	// Written just before each full poll, below.
+	var multiWanMu sync.Mutex
+	var lastMultiWan *probe.MultiWanInfo
+	activeUplink := func() string {
+		multiWanMu.Lock()
+		defer multiWanMu.Unlock()
+		return probe.ActiveUplinkName(lastMultiWan)
+	}
+
 	prober := probe.NewProber(probe.ShellRunner{}, probe.Options{
 		WanPingTarget: opts.WanTarget,
 		GwPingTarget:  opts.GwTarget,
 		ScanInterval:  opts.ScanInterval,
+		ActiveUplink:  activeUplink,
 	})
 
 	a := &agent{opts: opts, log: log, client: client}
@@ -162,6 +190,7 @@ func Run(ctx context.Context, opts Options) error {
 				log.Info("[netpulse-agent] iw evento", "action", action, "mac", ev.MAC, "iface", ev.Iface)
 				payload := prober.BuildWireless(ctx, opts.Slug, opts.Version)
 				withMeta(payload, opts)
+				payload.PanelPort = opts.PanelPort
 				a.pushOnce(ctx, payload)
 			}); err != nil {
 				log.Warn("[netpulse-agent] iw event terminó", "err", err)
@@ -206,8 +235,20 @@ func Run(ctx context.Context, opts Options) error {
 	// Ciclo principal: sondeo completo cada Interval o cuando el servidor
 	// lo pide (refresh).
 	for {
+		// The policy first: the prober reads it while building the WAN
+		// section, and the payload carries it as its own section.
+		var mw *probe.MultiWanInfo
+		if opts.MultiWan != nil {
+			mw = opts.MultiWan()
+		}
+		multiWanMu.Lock()
+		lastMultiWan = mw
+		multiWanMu.Unlock()
+
 		payload := prober.Build(ctx, opts.Slug, opts.Version)
 		withMeta(payload, opts)
+		payload.PanelPort = opts.PanelPort
+		payload.Data.MultiWan = mw
 		a.pushOnce(ctx, payload)
 		select {
 		case <-ctx.Done():

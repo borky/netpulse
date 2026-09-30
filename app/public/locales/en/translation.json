@@ -92,6 +92,7 @@
       "high-temperature": "Improve ventilation and keep the router away from heat sources.",
       "port-flapping": "Check the cable or switch port: an unstable link is usually the culprit.",
       "unknown-device": "If you do not recognize it, block it or mark it as trusted in Settings.",
+      "uplink-switched": "Check the line that dropped: the router goes back to it on its own once it recovers.",
       "wan-down": "Check the modem/ONT and contact your ISP if the outage persists.",
       "wan-slow": "Restart the router and the modem/ONT and run the test again; if it stays low, contact your ISP (line degradation or congestion in your area).",
       "wifi-weak": "Move the device closer to an access point or relocate the AP."
@@ -215,6 +216,15 @@
         "title": "Unknown device",
         "description": "{{mac}} connected to {{router}}",
         "descriptionWhere": "{{mac}} · {{ip}} connected to {{where}}"
+      },
+      "uplink-restored": {
+        "title": "Internet is back on {{to}}",
+        "description": "{{router}} moved the traffic back to {{to}}"
+      },
+      "uplink-switched": {
+        "title": "Internet is going out through {{to}}",
+        "description": "{{router}} moved the traffic from {{from}} to {{to}}",
+        "descriptionMetered": "{{router}} moved the traffic from {{from}} to {{to}}, a pay-per-use connection"
       },
       "wan-down": {
         "title": "Internet down",
@@ -877,6 +887,30 @@
       "speedtestFailed": "Last test failed",
       "planPct": "{{pct}} % of plan",
       "speedtestServer": "server {{name}}"
+    },
+    "multiWan": {
+      "title": "Internet connections",
+      "modeOff": "Not managed",
+      "modeFailover": "Failover",
+      "modeBalance": "Balanced",
+      "modeCustom": "Set up elsewhere",
+      "hint": {
+        "off": "Nothing is steering between these connections: whichever the router picks is the one carrying traffic.",
+        "failover": "One connection carries everything. If it stops reaching the internet, the next takes over on its own and hands it back when it recovers.",
+        "balance": "Traffic is shared between the connections, by the percentages set on the router.",
+        "custom": "Multi-WAN is set up outside the router's panel, so it is shown here exactly as it is."
+      },
+      "active": "Carrying traffic",
+      "activeShare": "Carrying {{pct}}%",
+      "standby": "Standby",
+      "offline": "Disconnected",
+      "failed": "Not reaching the internet",
+      "primary": "Main",
+      "metered": "Pay per use",
+      "viaPort": "port {{port}}",
+      "noAddress": "No address",
+      "stickyNote": "Each device stays on one connection at a time, so from a single computer you see one address, not a mix.",
+      "source": "Configured in this router's own panel. NetPulse only shows it."
     },
     "wireguard": {
       "lastIp": "Last IP",

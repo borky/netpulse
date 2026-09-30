@@ -140,6 +140,11 @@ type routerPolled struct {
 	// vlans: VLANs del bridge (issue #315, bridge vlan show). nil = sin
 	// datos (router sin bridge vlan filtering o sonda fallida).
 	vlans []VlanPort
+	// multiWan: the router's several internet connections and which one is
+	// carrying traffic, as its own panel manages them. nil = never
+	// reported (no such panel, or an older agent); an empty uplink list =
+	// reported, and there is nothing to show.
+	multiWan *MultiWanInfo
 	// discovery: mDNS services + randomized MACs (#338). nil = sin datos
 	// (umdns no instalado o sonda fallida).
 	discovery *probe.DiscoveryData
@@ -167,6 +172,11 @@ type extrasSnapshot struct {
 	fdb      map[string]string
 	luci     *probe.LuCILabels
 	vlans    []VlanPort
+	// multiWan: last good multi-WAN section. The event-driven pushes carry
+	// no such section, and without keeping it the panel would blink out of
+	// the page every time a device associates. Unlike wanInfo, which is a
+	// live address and must never be recycled, this is structural.
+	multiWan *MultiWanInfo
 	// system (#441): última sección system BUENA del payload del agente.
 	// Los pushes event-driven (wireless-only) van sin ella; sin este cache
 	// las vitales del router parpadeaban a 0 entre pushes completos.
@@ -291,9 +301,14 @@ type Live struct {
 	usteerChecking  bool
 	seenOnlineMacs  bool
 	wanDown         map[string]int
-	backhaulCache   map[string]backhaulCacheEntry
-	lldpCache       map[string]lldpCacheEntry
-	wanInfoCache    map[string]wanInfoCacheEntry
+	// uplinkWatch: which internet connection each router was last seen
+	// using, per router id, plus a candidate not yet believed. Memory
+	// only: after a restart the first poll records in silence rather than
+	// announcing a change that happened while nobody was looking.
+	uplinkWatch   map[string]*uplinkWatch
+	backhaulCache map[string]backhaulCacheEntry
+	lldpCache     map[string]lldpCacheEntry
+	wanInfoCache  map[string]wanInfoCacheEntry
 
 	// Agentes nativos (Tier 2): último payload por slug + flag de caída
 	// (degradado a SSH tras emitir la alerta, SPEC-AGENTE-PILOTO §1).
@@ -406,6 +421,7 @@ func NewLive(cfg *config.Config, d *db.DB, initial []RouterConfig, pool *SSHPool
 		presenceOfflineAfter: 3,
 		presencePruneAfter:   2000,
 		wanDown:              map[string]int{},
+		uplinkWatch:          map[string]*uplinkWatch{},
 		backhaulCache:        map[string]backhaulCacheEntry{},
 		lldpCache:            map[string]lldpCacheEntry{},
 		wanInfoCache:         map[string]wanInfoCacheEntry{},
@@ -898,13 +914,15 @@ func (l *Live) wanDayStats(gwID string) wanDayStatsResult {
 // y NO se toca SSH; si el agente expiró, se degrada a Tier 0 (SSH) con aviso.
 func (l *Live) pollRouter(ctx context.Context, cfg RouterConfig) (*routerPolled, error) {
 	if fresh, p := l.pollRouterAgent(cfg); fresh {
-		// El agente no trae el estado WAN en el payload: si este router es el
-		// gateway, lo sondeamos por SSH (issue #276, cache de 60 s).
+		// Estado WAN del gateway (issue #276). Los agentes nuevos lo traen en
+		// el payload; para los viejos queda la sonda SSH (cache de 60 s), que
+		// no existe si el router es agent_only.
 		l.mu.Lock()
 		gw := l.gatewayCfg
 		client := l.clients[cfg.ID]
 		l.mu.Unlock()
-		if gw != nil && cfg.ID == gw.ID && client != nil {
+		hasWan := p.wanInfo.Proto != "" || p.wanInfo.IP != "" || p.wanInfo.Gateway != ""
+		if gw != nil && cfg.ID == gw.ID && client != nil && !hasWan {
 			p.wanInfo = l.probeWanInfo(cfg.ID, client)
 		}
 		return p, nil
@@ -1425,6 +1443,9 @@ func (l *Live) pollAll(ctx context.Context) map[string]*routerPolled {
 			if l.gatewayCfg != nil && res.cfg.ID == l.gatewayCfg.ID {
 				l.trackWanDown(&res.cfg, res.p)
 			}
+			// Any router can have two lines; this is not a gateway-only
+			// arrangement.
+			l.trackUplinkChange(res.cfg, res.p, time.Now())
 			continue
 		}
 		fails := l.failCount[res.cfg.ID] + 1
@@ -1621,6 +1642,125 @@ func (l *Live) trackWanDown(cfg *RouterConfig, p *routerPolled) {
 			Time:        "ahora mismo", RouterID: cfg.ID,
 		})
 	}
+}
+
+// normalizeMultiWan makes a reported section safe to serve.
+//
+// Anything holding an agent token can push whatever it likes, and a section
+// without its list of connections would go out as a null the page then
+// reads a length from. A nil slice becomes an empty one, which already
+// means "nothing to show" everywhere downstream.
+func normalizeMultiWan(m *MultiWanInfo) *MultiWanInfo {
+	if m == nil {
+		return nil
+	}
+	if m.Uplinks == nil {
+		m.Uplinks = []WanUplink{}
+	}
+	return m
+}
+
+// uplinkWatch is one router's multi-WAN history, as much of it as an alert
+// needs.
+type uplinkWatch struct {
+	active    string    // the connection last CONFIRMED as carrying traffic
+	primary   string    // the preferred one at that moment, for "moved back"
+	candidate string    // a different one seen, not yet believed
+	since     time.Time // when the candidate was first seen
+}
+
+// uplinkSettle is how long a new connection must hold the traffic before it
+// counts as a change. A failover that bounces straight back — a link
+// renegotiating, a tracker blip while rules reload — then produces no alert
+// at all, which is the point: the interesting event is the one that lasts.
+const uplinkSettle = 45 * time.Second
+
+// trackUplinkChange alerts when the internet starts going out through a
+// different connection, and again when it comes back to the main one.
+//
+// The first observation of a router is recorded in silence. Otherwise every
+// restart of this server would announce a failover that happened days ago,
+// and the feed would fill with history on each deploy. Must be called with
+// l.mu held.
+func (l *Live) trackUplinkChange(cfg RouterConfig, p *routerPolled, now time.Time) {
+	if p == nil || p.multiWan == nil {
+		return
+	}
+	// Fewer than two connections is nothing to fail over between: forget
+	// the router, so a second line added later starts from silence.
+	if len(p.multiWan.Uplinks) < 2 {
+		delete(l.uplinkWatch, cfg.ID)
+		return
+	}
+	active := p.multiWan.Active
+	if active == "" {
+		// Nothing is steering. Not a move, and not something to guess at.
+		return
+	}
+	w := l.uplinkWatch[cfg.ID]
+	if w == nil {
+		l.uplinkWatch[cfg.ID] = &uplinkWatch{active: active, primary: p.multiWan.Primary}
+		return
+	}
+	w.primary = p.multiWan.Primary
+	if active == w.active {
+		w.candidate, w.since = "", time.Time{}
+		return
+	}
+	if active != w.candidate {
+		w.candidate, w.since = active, now
+		return
+	}
+	if now.Sub(w.since) < uplinkSettle {
+		return
+	}
+	from := w.active
+	w.active, w.candidate, w.since = active, "", time.Time{}
+	l.emitUplinkChange(cfg, p.multiWan, from, active)
+}
+
+// emitUplinkChange reports the move. Coming back to the preferred
+// connection is its own event: after a failover, "it is over" is the part
+// somebody is waiting for. Must be called with l.mu held.
+func (l *Live) emitUplinkChange(cfg RouterConfig, mw *MultiWanInfo, from, to string) {
+	name := cfg.Name
+	if name == "" {
+		name = cfg.Host
+	}
+	vars := map[string]string{"router": name, "from": from, "to": to}
+	restored := to == mw.Primary && mw.Primary != ""
+	for _, u := range mw.Uplinks {
+		if u.Name == to && u.Metered {
+			// Moving onto a pay-per-use line is different news: it starts
+			// costing money.
+			vars["metered"] = "1"
+		}
+	}
+	ev := AlertEvent{
+		ID:       fmt.Sprintf("alert-uplink-%s-%d", cfg.ID, time.Now().UnixMilli()),
+		Category: alerts.CatInternet,
+		// The internet category only lets urgent events through by
+		// default, so a quiet one here would simply never be seen.
+		Urgent:   true,
+		Severity: "warn",
+		// The destination is part of the title on purpose: the engine
+		// deduplicates on category+title+router, and a failover and its
+		// recovery inside that window would otherwise collapse into one.
+		Title:       "Internet sale ahora por " + to,
+		Description: fmt.Sprintf("%s ha pasado el tráfico de %s a %s", name, from, to),
+		Hint:        alerts.HintFor(alerts.HintUplinkSwitch),
+		Type:        alerts.HintUplinkSwitch,
+		Vars:        vars,
+		Time:        "ahora mismo", RouterID: cfg.ID,
+	}
+	if restored {
+		ev.Severity = "ok"
+		ev.Title = "Internet vuelve por " + to
+		ev.Description = fmt.Sprintf("%s ha devuelto el tráfico a %s", name, to)
+		ev.Hint = ""
+		ev.Type = alerts.TypeUplinkRestored
+	}
+	l.engine.Emit(ev)
 }
 
 // trackUnknownDevices emite "dispositivo desconocido se conecta" cuando un
@@ -3299,10 +3439,14 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 	if p != nil && len(p.vlans) > 0 {
 		vlans = p.vlans
 	}
+	var multiWan *MultiWanInfo
+	if p != nil {
+		multiWan = p.multiWan
+	}
 	detail := &RouterDetail{
 		Router: router, Ports: enriched, Radios: radios, Backhaul: nil,
 		Series:  PerfSeries{H1: seriesOf("1h"), H24: seriesOf("24h"), D7: seriesOf("7d")},
-		Clients: clients, Extras: extras, Vlans: vlans,
+		Clients: clients, Extras: extras, Vlans: vlans, MultiWan: multiWan,
 	}
 	if gw != nil && id == gw.ID {
 		detail.Adguard = l.pollAdGuard(ctx)

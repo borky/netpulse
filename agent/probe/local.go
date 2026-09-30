@@ -54,6 +54,10 @@ type Options struct {
 	// DefaultScanInterval; negativo (ScanDisabled) = sin scans periódicos,
 	// solo on-demand vía ForceScan (env NETPULSE_SCAN_INTERVAL).
 	ScanInterval time.Duration
+	// ActiveUplink names the uplink a policy manager is steering traffic
+	// through, when the embedder knows. nil or "" = decide from the routes,
+	// as before.
+	ActiveUplink func() string
 }
 
 // Prober sondea el equipo local y construye payloads. Mantiene el estado de
@@ -72,6 +76,9 @@ type Prober struct {
 	// para derivar la sección NetIf (contadores por iface, #305) sin un
 	// segundo cat.
 	lastNetRaw string
+	// lastWan: uplink del último Build, para que probeFDB marque la boca por
+	// la que sale internet sin repetir la llamada a ubus.
+	lastWan *WanInfo
 	// netIfUpdated indica si el último ciclo de probeSystem consiguió
 	// refrescar /proc/net/dev. Build solo incluye NetIf cuando es true,
 	// evitando enviar contadores repetidos si CmdNetDev falla o tarda.
@@ -118,6 +125,16 @@ func NewProber(run Runner, opts Options) *Prober {
 	return &Prober{run: run, opts: opts, scanInterval: si}
 }
 
+// activeUplink asks the embedder which uplink is carrying traffic. Never
+// panics on a callback that does: the WAN section is not worth an agent.
+func (p *Prober) activeUplink() string {
+	if p.opts.ActiveUplink == nil {
+		return ""
+	}
+	defer func() { _ = recover() }()
+	return p.opts.ActiveUplink()
+}
+
 // ForceScan pide un scan en el próximo Build (lo usa el runtime cuando el
 // server envía "refresh" por SSE): no espera al intervalo del throttle.
 func (p *Prober) ForceScan() {
@@ -149,6 +166,29 @@ func (p *Prober) scanDue() bool {
 	return false
 }
 
+// probeVlans reports the bridge VLANs, preferring what the kernel says over
+// what the config declares.
+//
+// The section has existed in the payload since VLANs were added, but
+// nothing ever filled it: only the server's own SSH probe did, and a router
+// reached through its agent never takes that path, so its VLAN panel has
+// always been empty. The fallback matters just as much — `bridge` lives in
+// an optional package, and a router without it has VLANs that only the
+// configuration knows about.
+func (p *Prober) probeVlans(ctx context.Context) []VlanPort {
+	if out := p.runBest(ctx, CmdBridgeVlan, 0); out != "" {
+		if ports := ParseBridgeVlan(out); len(ports) > 0 {
+			return ports
+		}
+	}
+	if out := p.runBest(ctx, CmdUciBridgeVlan, 0); out != "" {
+		if ports := ParseUciBridgeVlans(out); len(ports) > 0 {
+			return ports
+		}
+	}
+	return nil
+}
+
 // runBest es best-effort: error → "" (la sección queda ausente).
 func (p *Prober) runBest(ctx context.Context, cmd string, timeout time.Duration) string {
 	out, err := p.run.Run(ctx, cmd, timeout)
@@ -166,6 +206,9 @@ func (p *Prober) Build(ctx context.Context, router, version string) *Payload {
 		Ts:      time.Now().Unix(),
 		Version: version,
 	}
+	// Wan antes que FDB: probeFDB usa la boca del uplink para marcarla.
+	pl.Data.Wan = p.probeWan(ctx)
+	pl.Data.Vlans = p.probeVlans(ctx)
 	pl.Data.System = p.probeSystem(ctx)
 	pl.Data.Wireless = p.probeWireless(ctx, true)
 	pl.Data.DHCP = p.probeDHCP(ctx)
@@ -423,6 +466,24 @@ func (p *Prober) probeDHCP(ctx context.Context) *DHCPData {
 	return dd
 }
 
+// probeWan: estado del uplink (proto, IP pública, gateway, DNS y la boca por
+// la que sale), eligiendo la interfaz por su ruta por defecto y no por
+// llamarse "wan". nil cuando no hay nada utilizable: un AP sin uplink, o un
+// equipo sin ubus. Guarda el resultado para probeFDB.
+func (p *Prober) probeWan(ctx context.Context) *WanInfo {
+	p.lastWan = nil
+	out := p.runBest(ctx, CmdNetworkDump, 0)
+	if out == "" {
+		return nil
+	}
+	info := ParseWanStatusPreferring([]byte(out), p.activeUplink())
+	if info.Proto == "" && info.IP == "" && info.Gateway == "" && info.Port == "" {
+		return nil
+	}
+	p.lastWan = &info
+	return &info
+}
+
 // probeFDB: MACs aprendidas (brctl) + puertos ethernet (layout + /sys).
 func (p *Prober) probeFDB(ctx context.Context) *FDBData {
 	fd := &FDBData{}
@@ -461,8 +522,8 @@ func (p *Prober) probeFDB(ctx context.Context) *FDBData {
 		// Boca del uplink: la marca como WAN cuando el layout no trae
 		// ninguna (PPPoE sobre una boca "lan" y demás).
 		uplink := ""
-		if out := p.runBest(ctx, CmdNetworkDump, 0); out != "" {
-			uplink = ParseWanStatus([]byte(out)).Port
+		if p.lastWan != nil {
+			uplink = p.lastWan.Port
 		}
 		fd.Ports = BuildEthPorts(layout, states, members, ifaces, uplink)
 		any = true
