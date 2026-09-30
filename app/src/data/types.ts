@@ -199,6 +199,8 @@ export interface LldpInfo {
 }
 
 export interface Device {
+  /** Velocidad negociada (Mbps) de la boca donde está enchufado, si se sabe. */
+  speedMbps?: number
   id: string
   name: string
   type: DeviceType
@@ -283,6 +285,20 @@ export interface DistributionNode {
    * los Devices cuya MAC coincide con esta — se representa SOLO como nodo.
    */
   mac?: string
+  /**
+   * Qué es realmente la caja gestionada: "switch" o "ap". `kind` sigue
+   * siendo "managed" en ambos porque decide el layout (caja con MAC e IP,
+   * dibujada como nodo y no como chip de cliente), pero un punto de acceso
+   * no es un switch. Ausente = switch (lo único que la inferencia LLDP ha
+   * encontrado nunca).
+   */
+  role?: 'switch' | 'ap'
+  /**
+   * Velocidad negociada (Mbps) del enlace por el que cuelga, cuando alguien
+   * la sabe de verdad (hoy: la boca del switch, vía controlador). Ausente =
+   * desconocida, y la tabla escribe "—" en vez de inventarse un valor.
+   */
+  speedMbps?: number
 }
 
 export type AlertSeverity = 'warn' | 'critical' | 'info' | 'ok'

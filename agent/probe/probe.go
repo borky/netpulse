@@ -87,14 +87,33 @@ const (
 	// CmdRadioSections (#500): secciones wifi-device de UCI con su banda, para
 	// resolver "2.4 GHz" → radio0 (la relación iface→sección no sale de iwinfo).
 	CmdRadioSections = `uci -q show wireless 2>/dev/null | grep -E "=wifi-device$|\.band=|\.hwmode="`
-	// CmdPortStates: "<name> <operstate> <speed> <dsa?>" por interfaz. El
-	// 4º campo marca "dsa" cuando la interfaz es un conduit DSA (tiene el
-	// directorio /sys/class/net/<i>/dsa): es el puerto CPU interno del
-	// switch, no una boca usable, y se excluye del panel (#847).
+	// CmdPortStates: "<name> <operstate> <speed> <dsa> <type> <conduit>" por
+	// interfaz.
+	//   - dsa: "dsa" cuando la interfaz es un conduit DSA (tiene el directorio
+	//     /sys/class/net/<i>/dsa): el puerto CPU interno del switch, no una
+	//     boca usable (#847); "-" si no.
+	//   - type: el ARPHRD del kernel (1 = ethernet). FORK: para no tomar por
+	//     boca un uplink que no lo es (wwan0 de un módem celular).
+	//   - conduit: FORK. La interfaz inferior (lower_*) cuando la hay: en un
+	//     switch DSA las bocas cuelgan de la interfaz de CPU (lan1/lan2 →
+	//     lower_eth0). "-" cuando no hay ninguna.
+	// Los campos a partir del tercero son opcionales para ParsePortStates.
 	CmdPortStates = `for d in /sys/class/net/*; do i=$(basename "$d"); ` +
-		`echo "$i $(cat $d/operstate 2>/dev/null) $(cat $d/speed 2>/dev/null || echo -1) $([ -d $d/dsa ] && echo dsa || echo -)"; done`
+		`o=$(cat "$d/operstate" 2>/dev/null || echo unknown); ` +
+		`s=$(cat "$d/speed" 2>/dev/null || echo -1); ` +
+		`x=$([ -d "$d/dsa" ] && echo dsa || echo -); ` +
+		`t=$(cat "$d/type" 2>/dev/null || echo -1); ` +
+		`c=-; for l in "$d"/lower_*; do [ -e "$l" ] || continue; c=${l##*/lower_}; break; done; ` +
+		`echo "$i $o $s $x $t $c"; done`
 	// CmdProcArp (#377): tabla ARP del kernel, "IP dev mac ..." por línea.
-	CmdProcArp     = "cat /proc/net/arp 2>/dev/null"
+	CmdProcArp = "cat /proc/net/arp 2>/dev/null"
+	// CmdIpNeigh: the same neighbour table, but with the state of each entry,
+	// which /proc/net/arp cannot express -- its flags say ATF_COM for
+	// REACHABLE and for STALE alike. A STALE neighbour is one the kernel has
+	// not confirmed since the device last spoke, and it survives long after
+	// the device is gone, so treating it as presence draws hosts that are no
+	// longer there. Falls back to /proc/net/arp when `ip` is missing.
+	CmdIpNeigh     = "ip -4 neigh show 2>/dev/null"
 	CmdBoardJSON   = "cat /etc/board.json 2>/dev/null"
 	CmdBrifMembers = "BR=br-lan; [ -d /sys/class/net/$BR ] || BR=br0; ls /sys/class/net/$BR/brif/ 2>/dev/null"
 	// CmdBridgeFDB: "==PORTS==" (port_no ifname) + "==MACS==" (port mac).
@@ -121,8 +140,12 @@ const (
 	CmdLuCILabels = "cat /etc/config/luci 2>/dev/null"
 	// CmdWanStatus: estado de la interfaz WAN (solo gateway) vía ubus.
 	// Da proto ("pppoe"), IP, gateway (ptpaddress/nexthop) y DNS (issue #276).
-	CmdWanStatus  = "ubus call network.interface.wan status 2>/dev/null || true"
-	CmdBridgeVlan = "bridge vlan show 2>/dev/null || true"
+	CmdWanStatus = "ubus call network.interface.wan status 2>/dev/null || true"
+	// CmdNetworkDump: estado de TODAS las interfaces, para elegir el uplink
+	// por la ruta por defecto en vez de por el nombre "wan" (ver pickUplink)
+	// y saber por qué boca sale internet.
+	CmdNetworkDump = "ubus call network.interface dump 2>/dev/null || true"
+	CmdBridgeVlan  = "bridge vlan show 2>/dev/null || true"
 
 	// CmdMdnsBrowse (#338): mDNS service discovery via umdns (OpenWrt's
 	// lightweight mDNS daemon). Returns JSON with hostname -> services.
@@ -170,10 +193,14 @@ type BoardInfo struct {
 // los campos vacíos significan "sin datos WAN" (APs/desconocido).
 type WanInfo struct {
 	Proto   string   `json:"proto,omitempty"`   // "pppoe"|"dhcp"|"static"...
-	Device  string   `json:"device,omitempty"`  // interfaz física (p.ej. "eth1.20")
+	Device  string   `json:"device,omitempty"`  // interfaz L3 (p.ej. "pppoe-wan")
 	IP      string   `json:"ip,omitempty"`      // dirección IPv4 pública
 	Gateway string   `json:"gateway,omitempty"` // puerta de enlace (nexthop/ptpaddress)
 	DNS     []string `json:"dns,omitempty"`     // servidores DNS
+	// Port es la interfaz por debajo del protocolo: la boca por la que sale
+	// internet ("lan1" para un PPPoE sobre esa boca, "eth1.20" con VLAN).
+	// Vacía cuando el uplink no pasa por ninguna (módem celular).
+	Port string `json:"port,omitempty"`
 }
 
 // DhcpLease es {mac, ip, hostname} (mac en mayúsculas) + señales de huella
@@ -209,6 +236,13 @@ type PortState struct {
 	// /sys/class/net/<i>/dsa presente). No es una boca usable: se excluye
 	// de los puertos del panel (#847).
 	DSA bool `json:"dsa,omitempty"`
+	// Type es el ARPHRD de /sys/class/net/<i>/type: 1 = ethernet. 0 o
+	// negativo = desconocido (salida antigua), y entonces no se descarta
+	// nada por el tipo. FORK.
+	Type int `json:"type,omitempty"`
+	// Conduit es la interfaz inferior (lower_*), vacío si no hay. En un
+	// switch DSA es el puerto de CPU del que cuelga la boca. FORK.
+	Conduit string `json:"conduit,omitempty"`
 }
 
 // fmtSpeedMbps (#847) formatea la velocidad de enlace: Gbps con decimales
@@ -223,6 +257,9 @@ func fmtSpeedMbps(mbps int) string {
 	}
 	return strconv.Itoa(mbps) + " Mbps"
 }
+
+// ARPHRDEther es el /sys/class/net/<i>/type de una interfaz ethernet.
+const ARPHRDEther = 1
 
 // PortLayout es una boca del layout canónico (/etc/board.json).
 type PortLayout struct {
@@ -494,46 +531,93 @@ func ParseDhcpUbus(raw []byte) ([]DhcpLease, error) {
 	return out, nil
 }
 
-// ParseWanStatus parsea `ubus call network.interface.wan status` (issue #276).
-// Extrae proto, interfaz física, IP pública, gateway (nexthop de la ruta por
-// defecto, con fallback al ptpaddress) y DNS. Devuelve un WanInfo con los
-// campos vacíos si el JSON no tiene datos utilizables.
-func ParseWanStatus(raw []byte) WanInfo {
-	var data struct {
-		Proto  string `json:"proto"`
-		Device string `json:"l3_device"`
-		IPV4   []struct {
-			Address    string `json:"address"`
-			PtpAddress string `json:"ptpaddress"`
-		} `json:"ipv4-address"`
-		Route []struct {
-			Target  string `json:"target"`
-			Mask    int    `json:"mask"`
-			Nexthop string `json:"nexthop"`
-		} `json:"route"`
-		DNS []string `json:"dns-server"`
+// ifaceStatus es una interfaz de `ubus call network.interface[.<x>] status`,
+// y cada entrada de `... dump`.
+type ifaceStatus struct {
+	Interface string `json:"interface"`
+	Up        bool   `json:"up"`
+	Proto     string `json:"proto"`
+	L3Device  string `json:"l3_device"`
+	// Device es la interfaz de debajo: para un PPPoE, la boca física.
+	Device string `json:"device"`
+	IPV4   []struct {
+		Address    string `json:"address"`
+		PtpAddress string `json:"ptpaddress"`
+	} `json:"ipv4-address"`
+	Route []struct {
+		Target  string `json:"target"`
+		Mask    int    `json:"mask"`
+		Nexthop string `json:"nexthop"`
+	} `json:"route"`
+	DNS []string `json:"dns-server"`
+}
+
+func (s ifaceStatus) defaultNexthop() string {
+	for _, r := range s.Route {
+		if r.Target == "0.0.0.0" && r.Mask == 0 && r.Nexthop != "" {
+			return r.Nexthop
+		}
 	}
-	info := WanInfo{}
-	if json.Unmarshal(raw, &data) != nil {
-		return info
+	return ""
+}
+
+// pickUplink elige la interfaz que lleva internet. No vale fiarse del nombre
+// "wan": en un router multi-WAN el uplink vivo puede llamarse de cualquier
+// forma (un PPPoE llamado "isp" junto a un módem celular que sí se llama
+// "wan" y que además reporta up=true estando ocioso), así que manda la ruta
+// por defecto. Sin ninguna con ruta, cae a la llamada "wan" para que un
+// router normal con el enlace caído siga saliendo como WAN caída y no como
+// router sin WAN.
+func pickUplink(ifaces []ifaceStatus) (ifaceStatus, bool) {
+	for _, i := range ifaces {
+		if i.Up && i.defaultNexthop() != "" {
+			return i, true
+		}
 	}
-	info.Proto = data.Proto
-	info.Device = data.Device
-	if len(data.IPV4) > 0 {
-		info.IP = data.IPV4[0].Address
-		if data.IPV4[0].PtpAddress != "" {
-			info.Gateway = data.IPV4[0].PtpAddress
+	for _, i := range ifaces {
+		if i.Interface == "wan" {
+			return i, true
+		}
+	}
+	return ifaceStatus{}, false
+}
+
+func wanInfoFrom(s ifaceStatus) WanInfo {
+	info := WanInfo{Proto: s.Proto, Device: s.L3Device, Port: s.Device, DNS: s.DNS}
+	if len(s.IPV4) > 0 {
+		info.IP = s.IPV4[0].Address
+		if s.IPV4[0].PtpAddress != "" {
+			info.Gateway = s.IPV4[0].PtpAddress
 		}
 	}
 	// El gateway real es el nexthop de la ruta por defecto (0.0.0.0/0).
-	for _, r := range data.Route {
-		if r.Target == "0.0.0.0" && r.Nexthop != "" {
-			info.Gateway = r.Nexthop
-			break
-		}
+	if nh := s.defaultNexthop(); nh != "" {
+		info.Gateway = nh
 	}
-	info.DNS = data.DNS
 	return info
+}
+
+// ParseWanStatus parsea el estado de la WAN (issue #276). Acepta las dos
+// formas: `ubus call network.interface dump` (y entonces elige el uplink
+// activo, ver pickUplink) y el status de una sola interfaz. Extrae proto,
+// interfaz L3, boca física, IP pública, gateway y DNS; campos vacíos si el
+// JSON no trae datos utilizables.
+func ParseWanStatus(raw []byte) WanInfo {
+	var dump struct {
+		Interface []ifaceStatus `json:"interface"`
+	}
+	if err := json.Unmarshal(raw, &dump); err == nil && len(dump.Interface) > 0 {
+		s, ok := pickUplink(dump.Interface)
+		if !ok {
+			return WanInfo{}
+		}
+		return wanInfoFrom(s)
+	}
+	var one ifaceStatus
+	if json.Unmarshal(raw, &one) != nil {
+		return WanInfo{}
+	}
+	return wanInfoFrom(one)
 }
 
 // ParseDhcpLeasesFile parsea /tmp/dhcp.leases:
@@ -667,7 +751,9 @@ func ParseWirelessUplink(raw []byte) (bool, error) {
 // Puertos
 // ---------------------------------------------------------------------------
 
-// ParsePortStates parsea líneas "<name> <operstate> <speed> [dsa]".
+// ParsePortStates parsea líneas "<name> <operstate> <speed> [dsa] [type]
+// [conduit]". Los campos opcionales que falten dejan su valor por defecto:
+// sin type no se descarta ninguna boca por él.
 func ParsePortStates(out string) []PortState {
 	ports := []PortState{}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
@@ -686,6 +772,12 @@ func ParsePortStates(out string) []PortState {
 		st := PortState{Name: p[0], Up: p[1] == "up", Speed: speed}
 		if len(p) > 3 && p[3] == "dsa" {
 			st.DSA = true
+		}
+		if len(p) > 4 {
+			st.Type, _ = strconv.Atoi(p[4])
+		}
+		if len(p) > 5 && p[5] != "-" {
+			st.Conduit = p[5]
 		}
 		ports = append(ports, st)
 	}
@@ -718,12 +810,56 @@ func ParsePortLayout(out string) ([]PortLayout, error) {
 	return ports, nil
 }
 
+// phyRe/skipRe: nombres que pueden ser una boca física y nombres que nunca lo
+// son (bridges, VLANs, túneles, wireless, módems).
+var (
+	phyRe  = regexp.MustCompile(`^(eth|sfp|en|swp)[0-9a-zA-Z_\-]*$|^(lan|wan)[0-9]+$`)
+	skipRe = regexp.MustCompile(`^(lo|br[-_]?|br-lan|br0|docker|veth|wg|tun|tap|ifb|pppoe|wlan|wpan|phy|gre|gretap|erspan|ip6tnl|sit|teql|bond|dummy|nat64|rmnet|usb|wwan)`)
+)
+
+// switchConduits: puertos de CPU de un switch, deducidos de las propias
+// bocas. En DSA cada boca cuelga de la interfaz de CPU (lan1 y lan2 tienen
+// lower_eth0), que no es una boca física por mucho que se llame eth0.
+//
+// Solo se mira el lower_* de interfaces que parecen bocas: el de un bridge
+// son sus miembros (br-lan → lower_lan2) y el de una VLAN su interfaz padre,
+// relaciones que no señalan ningún puerto de CPU.
+func switchConduits(states []PortState) map[string]bool {
+	conduits := map[string]bool{}
+	for _, st := range states {
+		if st.Conduit == "" || skipRe.MatchString(st.Name) || !phyRe.MatchString(st.Name) {
+			continue
+		}
+		conduits[st.Conduit] = true
+	}
+	return conduits
+}
+
+// isEthNetdev: el layout nombra una interfaz de red ethernet de verdad.
+// board.json declara como WAN lo que el router use de uplink, y no siempre es
+// una boca: en un router celular es "/dev/cdc-wdm0",
+// que ni siquiera aparece en /sys/class/net. Un tipo desconocido (salida
+// antigua, sin el campo) cuenta como ethernet: mejor enseñar una boca de más
+// que esconder una real.
+func isEthNetdev(st PortState, ok bool) bool {
+	return ok && (st.Type <= 0 || st.Type == ARPHRDEther)
+}
+
 // BuildEthPorts: layout + estado /sys → []EthPort listo para el detalle.
 // brMembers = miembros del bridge br-lan (AP en bridge re-etiqueta wan→LAN
 // N+1); sin layout, fallback heurístico. ifaces = contadores/rates por iface
 // física (issue #305; nil = sin datos, las bocas salen sin stats). Literal de
 // openwrt.go GetEthPorts.
-func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string]bool, ifaces map[string]IfRate) []EthPort {
+//
+// Descarta dos bocas que no existen: el uplink del layout cuando no es una
+// interfaz ethernet (módem celular) y el puerto de CPU del switch. Sin ellos
+// un router así pasa de enseñar cuatro bocas -- WAN (nunca conectada), LAN 1,
+// LAN 2 y ETH 0 -- a las dos que tiene.
+//
+// uplink es la boca por la que sale internet (WanInfo.Port); cuando ninguna
+// boca ha salido como WAN se promueve esa, ver promoteUplink. "" = sin dato,
+// y entonces no se promueve nada.
+func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string]bool, ifaces map[string]IfRate, uplink string) []EthPort {
 	applyStats := func(ep *EthPort, iface string) {
 		st, ok := ifaces[iface]
 		if !ok {
@@ -738,9 +874,14 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 	for _, p := range states {
 		byName[p.Name] = p
 	}
+	conduits := switchConduits(states)
 
 	used := map[string]bool{}
 	ports := make([]EthPort, 0, len(states))
+	// netdev de cada boca por id, para saber luego cuál lleva el uplink: el
+	// id no siempre es el nombre de la interfaz (en swconfig, "1" vs
+	// "eth0.1").
+	netdev := map[string]string{}
 
 	if len(layout) > 0 {
 		lanCount := 0
@@ -751,6 +892,9 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 		}
 		for _, p := range layout {
 			st, ok := byName[p.Name]
+			if p.Role == "wan" && !isEthNetdev(st, ok) {
+				continue
+			}
 			up := ok && st.Up
 			label := p.Label
 			if p.Role == "wan" && brMembers[p.Name] {
@@ -762,6 +906,7 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 			}
 			applyStats(&ep, p.Name)
 			ports = append(ports, ep)
+			netdev[ep.ID] = p.Name
 			used[p.Name] = true
 		}
 	} else {
@@ -781,6 +926,7 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 			}
 			applyStats(&ep, p.Name)
 			ports = append(ports, ep)
+			netdev[ep.ID] = p.Name
 			used[p.Name] = true
 		}
 		wanName := ""
@@ -800,14 +946,13 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 			}
 			applyStats(&ep, wanName)
 			ports = append([]EthPort{ep}, ports...)
+			netdev[ep.ID] = wanName
 			used[wanName] = true
 		}
 	}
 
 	// Mejora #413/#416: añadir interfaces físicas que no estén ya cubiertas
 	// por el layout/fallback (p. ej. eth0, sfp+ en BPI-R4/UniFi).
-	phyRe := regexp.MustCompile(`^(eth|sfp|en|swp)[0-9a-zA-Z_\-]*$|^(lan|wan)[0-9]+$`)
-	skipRe := regexp.MustCompile(`^(lo|br[-_]?|br-lan|br0|docker|veth|wg|tun|tap|ifb|pppoe|wlan|wpan|phy|gre|gretap|erspan|ip6tnl|sit|teql|bond|dummy|nat64|rmnet|usb|wwan)`)
 	extras := make([]EthPort, 0)
 	for _, st := range states {
 		if used[st.Name] {
@@ -825,6 +970,9 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 		if !phyRe.MatchString(st.Name) {
 			continue
 		}
+		if conduits[st.Name] {
+			continue // puerto de CPU del switch, no una boca
+		}
 		label := st.Name
 		if strings.HasPrefix(st.Name, "eth") {
 			label = "ETH " + strings.TrimPrefix(st.Name, "eth")
@@ -837,6 +985,7 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 		}
 		applyStats(&ep, st.Name)
 		extras = append(extras, ep)
+		netdev[ep.ID] = st.Name
 		used[st.Name] = true
 	}
 	if len(extras) > 0 {
@@ -845,6 +994,38 @@ func BuildEthPorts(layout []PortLayout, states []PortState, brMembers map[string
 		ports = append(ports, extras...)
 	}
 
+	return promoteUplink(ports, netdev, uplink)
+}
+
+// promoteUplink marca como WAN la boca por la que sale internet cuando
+// ninguna ha salido ya como tal. Hay routers cuyo uplink no entra por una
+// boca WAN dedicada: el PPPoE puede ir sobre una boca llamada "lan1" y el
+// board.json solo declara un módem como WAN, así que sin esto ninguna boca
+// sale con id "wan" -- y la UI marca el uplink y cuelga los datos de la
+// conexión (proto, IP pública, gateway, DNS) justo de esa.
+//
+// La boca conserva su sitio y su iface: las estadísticas y la MAC siguen
+// siendo las suyas, solo cambia cómo se presenta.
+func promoteUplink(ports []EthPort, netdev map[string]string, uplink string) []EthPort {
+	if uplink == "" {
+		return ports
+	}
+	for _, p := range ports {
+		if p.ID == "wan" {
+			return ports // el layout ya trae una boca WAN
+		}
+	}
+	// El uplink puede llegar etiquetado ("lan1.7"): la boca es la de debajo.
+	base := uplink
+	if i := strings.LastIndexByte(base, '.'); i > 0 {
+		base = base[:i]
+	}
+	for i := range ports {
+		if n := netdev[ports[i].ID]; n == uplink || n == base {
+			ports[i].ID, ports[i].Label = "wan", "WAN"
+			break
+		}
+	}
 	return ports
 }
 
@@ -1496,6 +1677,64 @@ func ParseArp(out string) map[string]string {
 		m[mac] = f[0]
 	}
 	return m
+}
+
+// neighConfirmed: the states in which the kernel vouches for the neighbour
+// being there right now. REACHABLE was confirmed within the reachable time;
+// DELAY and PROBE are on their way to being reconfirmed; PERMANENT and NOARP
+// were put there by hand or by a link that needs no resolution.
+//
+// Everything else -- STALE, FAILED, INCOMPLETE, NONE -- is an address the
+// kernel remembers without being able to say the host is still connected.
+var neighConfirmed = map[string]bool{
+	"REACHABLE": true, "DELAY": true, "PROBE": true,
+	"PERMANENT": true, "NOARP": true,
+}
+
+// ParseIPNeigh parses `ip neigh show`, whose lines read
+// "IP dev IFACE lladdr MAC STATE" (an entry being resolved has no lladdr).
+// It returns the same MAC→IP map as ParseArp plus the set of MACs whose
+// every entry is unconfirmed: remembered addresses, not present hosts.
+//
+// A MAC with several addresses counts as confirmed when any one of them is,
+// since one confirmed neighbour is enough to prove the host is there.
+func ParseIPNeigh(out string) (arp map[string]string, stale map[string]bool) {
+	arp, stale = map[string]string{}, map[string]bool{}
+	confirmed := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		// "IP dev IFACE lladdr MAC STATE" is the shortest useful line.
+		if len(f) < 6 || net.ParseIP(f[0]) == nil {
+			continue
+		}
+		var mac string
+		for i := 1; i+1 < len(f); i++ {
+			if f[i] == "lladdr" {
+				mac = strings.ToUpper(f[i+1])
+				break
+			}
+		}
+		if mac == "" || mac == "00:00:00:00:00:00" {
+			continue
+		}
+		// The state is the last word of the line; an entry without one is
+		// not something to claim presence from.
+		if neighConfirmed[f[len(f)-1]] {
+			// Confirmed wins for good: a later unconfirmed address for the
+			// same host must not undo it.
+			arp[mac] = f[0]
+			confirmed[mac] = true
+			delete(stale, mac)
+			continue
+		}
+		if !confirmed[mac] {
+			if _, ok := arp[mac]; !ok {
+				arp[mac] = f[0]
+			}
+			stale[mac] = true
+		}
+	}
+	return arp, stale
 }
 
 // sumProcRSS returns the total VmRSS (bytes) of every user-space process

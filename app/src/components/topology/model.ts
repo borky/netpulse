@@ -1434,10 +1434,36 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
   ).length
 
   // Tabla de backhauls (topology.md §④)
+  /**
+   * Nombre del equipo del que cuelga un dispositivo, resuelto por el mismo
+   * hubOf que usa el mapa: un nodo de distribución (switch, AP, hipervisor),
+   * otro dispositivo que hace de hub, o el router. Nada de asumir el router:
+   * el host Proxmox cuelga del switch y la tabla lo anunciaba colgando del
+   * OpenWrt, que es el enlace de más arriba, no el suyo.
+   */
+  const hubNameOf = (d: Device): string => {
+    const id = hubOf(d)
+    const dn = distById.get(id)
+    if (dn) return dn.name ?? dn.ip ?? id
+    const rn = routerById.get(id)
+    if (rn) return rn.router.name
+    return deviceById.get(id)?.name ?? id
+  }
+  /**
+   * Velocidad de un enlace, o "—" si nadie la ha medido. La tabla escribía
+   * "1 Gbps" en toda fila de distribución y "866 Mbps PHY · −58 dBm" en un
+   * uplink wifi sin tener el dato de ninguno de los dos: números inventados
+   * con aspecto de medida. Hoy solo el controlador reporta velocidad real
+   * (la negociada en su boca) y solo eso se pinta.
+   */
+  const linkSpeed = (mbps?: number): string => {
+    if (!mbps || mbps <= 0) return '—'
+    return mbps >= 1000 ? `${(mbps / 1000).toFixed(mbps % 1000 === 0 ? 0 : 1)} Gbps` : `${mbps} Mbps`
+  }
   const backhauls: BackhaulRow[] = []
   if (gatewayNode) {
     backhauls.push({
-      id: 'wan', a: 'Gateway', b: 'Internet', kind: 'wan',
+      id: 'wan', a: gatewayNode.router.name, b: 'Internet', kind: 'wan',
       type: 'topology.links.fiberWan', speed: wan.plan, signal: `${wan.latencyMs} ms`,
       tone: 'ok', statusLabel: 'common.status.online',
       spark: gatewayNode.router.sparkline, sparkColor: COLOR.accent,
@@ -1446,13 +1472,15 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
   for (const node of apNodes) {
     const isWifi = node.router.backhaul === 'wifi'
     backhauls.push({
-      id: `uplink-${node.id}`, a: 'Gateway', b: node.router.name, kind: 'uplink',
+      id: `uplink-${node.id}`, a: gatewayNode?.router.name ?? '', b: node.router.name, kind: 'uplink',
       type: isWifi ? 'topology.links.wifiUplink' : 'common.cable',
-      speed: isWifi ? '866 Mbps PHY' : '1 Gbps',
-      signal: isWifi ? '−58 dBm · 1 ms' : '<1 ms',
+      // El contrato no trae ni tasa PHY ni señal del backhaul de un AP, así
+      // que no se afirma ninguna. El tono sí es información real: un enlace
+      // por wifi merece mirarse más que uno por cable.
+      speed: '—',
+      signal: '—',
       tone: isWifi ? 'warn' : 'ok',
       statusLabel: isWifi ? 'common.status.warn' : 'common.status.online',
-      note: isWifi ? 'topology.links.congestedChannel' : undefined,
       spark: node.router.sparkline,
       sparkColor: isWifi ? COLOR.warn : COLOR.accent,
     })
@@ -1466,11 +1494,14 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
     const a = parent ? (parent.node.name ?? parent.node.ip ?? '') : (rn?.router.name ?? '')
     const spark = rn?.router.sparkline ?? []
     if (dv.node.kind === 'managed') {
+      // La procedencia es LLDP solo si el router vio el anuncio; una caja que
+      // solo conoce un integrador llevaba "LLDP" y el tipo "switch".
+      const via = dv.node.lldp ? 'LLDP' : (dv.node.source ? dv.node.source.toUpperCase() : '')
       backhauls.push({
         id: `dist-${dv.id}`, a,
-        b: [dv.node.name, dv.node.ip, 'LLDP', dv.node.portLabel ?? dv.node.port].filter(Boolean).join(' · '),
-        kind: 'dist', type: 'topology.links.managedSwitch',
-        speed: '1 Gbps', signal: '<1 ms',
+        b: [dv.node.name, dv.node.ip, via, dv.node.portLabel ?? dv.node.port].filter(Boolean).join(' · '),
+        kind: 'dist', type: dv.node.role === 'ap' ? 'topology.links.managedAp' : 'topology.links.managedSwitch',
+        speed: linkSpeed(dv.node.speedMbps), signal: '—',
         tone: 'ok', statusLabel: 'common.status.online',
         spark, sparkColor: COLOR.accent,
       })
@@ -1479,7 +1510,7 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
         id: `dist-${dv.id}`, a,
         b: '', bKey: 'topology.links.inferredSwitch', bVars: { port: dv.node.portLabel ?? dv.node.port },
         kind: 'dist', type: 'common.cable',
-        speed: '1 Gbps', signal: '<1 ms',
+        speed: linkSpeed(dv.node.speedMbps), signal: '—',
         tone: 'ok', statusLabel: 'common.status.online',
         spark, sparkColor: COLOR.ok,
       })
@@ -1488,13 +1519,16 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
   // D7: cable del hipervisor (host con sus CTs/VMs anidados).
   for (const dn of distributionNodes.filter((n) => n.kind === 'hypervisor' && n.hostDeviceId)) {
     const host = deviceById.get(dn.hostDeviceId!)
-    const rn = routerById.get(dn.routerId)
-    if (!host || !rn) continue
+    if (!host) continue
+    // La boca la manda el DEVICE, no el nodo: el nodo se crea con lo que el
+    // host tenía al sellar Proxmox y los sellos posteriores (UniFi) afinan
+    // la del device — nombre de boca incluido.
+    const port = host.portLabel ?? host.port ?? dn.portLabel ?? dn.port
     backhauls.push({
-      id: `wired-${host.id}`, a: rn.router.name,
-      b: `${host.name} · ${dn.portLabel ?? dn.port} · ${ctCountByHost.get(host.id) ?? 0} CT`,
+      id: `wired-${host.id}`, a: hubNameOf(host),
+      b: [host.name, port, `${ctCountByHost.get(host.id) ?? 0} CT`].filter(Boolean).join(' · '),
       kind: 'wired', type: 'topology.links.hypervisorCable',
-      speed: '—', signal: '—',
+      speed: linkSpeed(host.speedMbps), signal: '—',
       tone: 'ok', statusLabel: 'common.status.online',
       spark: host.sparkline, sparkColor: COLOR.ok,
     })
@@ -1504,7 +1538,7 @@ export function buildTopologyModel({ routers, devices, wan, wireguard, distribut
     const device = devices.find((d) => d.id === node.peer.id)
     backhauls.push({
       id: `wg-${node.peer.id}`, a: 'Internet', b: node.peer.name, kind: 'wg',
-      type: 'WireGuard', speed: '—', signal: '42 ms',
+      type: 'WireGuard', speed: '—', signal: '—',
       tone: 'tunnel', statusLabel: 'common.active',
       spark: device?.sparkline ?? [0, 0], sparkColor: COLOR.tunnel,
     })

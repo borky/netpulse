@@ -120,7 +120,7 @@ func TestBuildEthPortsConIfaces(t *testing.T) {
 		"lan1":  {IfCounters: IfCounters{Rx: 1000, Tx: 2000, RxErr: 3}, RxBps: &rxb, TxBps: &txb},
 		"wlan0": {IfCounters: IfCounters{Rx: 99}}, // no es boca: se ignora
 	}
-	ports := BuildEthPorts(layout, states, nil, ifaces)
+	ports := BuildEthPorts(layout, states, nil, ifaces, "")
 	if len(ports) != 1 {
 		t.Fatalf("ports: %+v", ports)
 	}
@@ -132,7 +132,7 @@ func TestBuildEthPortsConIfaces(t *testing.T) {
 		t.Fatalf("rates: %+v", p)
 	}
 	// Fallback (sin layout) también enriquece
-	ports = BuildEthPorts(nil, []PortState{{Name: "lan1", Up: true, Speed: "1 Gbps"}}, nil, ifaces)
+	ports = BuildEthPorts(nil, []PortState{{Name: "lan1", Up: true, Speed: "1 Gbps"}}, nil, ifaces, "")
 	if len(ports) != 1 || ports[0].Iface != "lan1" || ports[0].RxBytes != 1000 {
 		t.Fatalf("fallback stats: %+v", ports)
 	}
@@ -179,7 +179,7 @@ func TestBuildEthPortsSkipsDsaConduit(t *testing.T) {
 		{Name: "lan1", Up: true, Speed: "1 Gbps"},
 		{Name: "eth1", Up: true, Speed: "150 Mbps", DSA: true},
 	}
-	ports := BuildEthPorts(nil, states, nil, nil)
+	ports := BuildEthPorts(nil, states, nil, nil, "")
 	if len(ports) != 1 || ports[0].ID != "lan1" {
 		t.Fatalf("el conduit DSA debe excluirse: %+v", ports)
 	}
@@ -287,8 +287,11 @@ func TestParseWireless(t *testing.T) {
 }
 
 func TestParsePortsYLayout(t *testing.T) {
-	states := ParsePortStates("eth0 up 2500\nlan1 up 1000\nlan2 down -1\nwlan0 up 0\n")
-	if len(states) != 4 || states[0].Speed != "2.5 Gbps" || states[2].Up || states[2].Speed != "—" {
+	// La boca WAN aparece en /sys aunque esté esclavizada al bridge: sin ella
+	// en los estados sería un device que no existe y BuildEthPorts la
+	// descartaría (ver TestBuildEthPortsUplinkNoEthernet).
+	states := ParsePortStates("eth0 up 2500\nlan1 up 1000\nlan2 down -1\nwlan0 up 0\nwan up 1000\n")
+	if len(states) != 5 || states[0].Speed != "2.5 Gbps" || states[2].Up || states[2].Speed != "—" {
 		t.Fatalf("states: %+v", states)
 	}
 	board := `{"network":{"lan":{"ports":["lan1","lan2","lan3","lan4"],"device":"br-lan"},"wan":{"device":"wan","protocol":"dhcp"}}}`
@@ -297,7 +300,7 @@ func TestParsePortsYLayout(t *testing.T) {
 		t.Fatalf("layout: %v %+v", err, layout)
 	}
 	// AP en bridge: wan en br-lan → se re-etiqueta LAN 5
-	ports := BuildEthPorts(layout, states, map[string]bool{"wan": true}, nil)
+	ports := BuildEthPorts(layout, states, map[string]bool{"wan": true}, nil, "")
 	if len(ports) != 6 || ports[0].Label != "LAN 5" {
 		t.Fatalf("ethports bridge: %+v", ports)
 	}
@@ -309,7 +312,7 @@ func TestParsePortsYLayout(t *testing.T) {
 		t.Fatalf("ethports bridge sin eth0 extra: %+v", ports)
 	}
 	// Sin layout: fallback heurístico + interfaces físicas no cubiertas (#413/#416)
-	ports = BuildEthPorts(nil, ParsePortStates("lan2 up 1000\nlan10 up 100\nwan down -1\neth0 up 2500\n"), nil, nil)
+	ports = BuildEthPorts(nil, ParsePortStates("lan2 up 1000\nlan10 up 100\nwan down -1\neth0 up 2500\n"), nil, nil, "")
 	fallbackIDs := map[string]int{}
 	for i, p := range ports {
 		fallbackIDs[p.ID] = i
@@ -335,7 +338,7 @@ func TestParsePortsYLayout(t *testing.T) {
 		{Name: "lan4", Up: true, Speed: "1 Gbps"},
 		{Name: "eth0", Up: true, Speed: "2.5 Gbps"},
 		{Name: "sfp0", Up: true, Speed: "10 Gbps"},
-	}, nil, nil)
+	}, nil, nil, "")
 	if len(ports) != 7 {
 		t.Fatalf("layout + extras: %d ports, %+v", len(ports), ports)
 	}
@@ -1071,5 +1074,258 @@ func TestParseRadioSectionsEmpty(t *testing.T) {
 	}
 	if got := ParseRadioSections("network.lan=interface\n"); len(got) != 0 {
 		t.Errorf("want empty map for unrelated config, got %v", got)
+	}
+}
+
+// portStatesDSASwitch es la salida de CmdPortStates en una placa con switch DSA
+// (ipq4019, switch DSA): dos bocas de verdad (lan1, lan2) colgando del puerto
+// de CPU eth0, el bridge con sus VLANs, y un módem celular en wwan0.
+const portStatesDSASwitch = `br-lan up 1000 - 1 lan2
+br-lan.10 up 1000 - 1 br-lan
+br-lan.16 up 1000 - 1 br-lan
+eth0 up 1000 dsa 1 -
+lan1 up 1000 - 1 eth0
+lan2 up 1000 - 1 eth0
+lo unknown -1 - 772 -
+phy2-ap0 up -1 - 1 -
+pppoe-isp unknown -1 - 512 -
+wg0 unknown -1 - 65534 -
+wwan0 unknown -1 - 65534 -`
+
+// boardWanIsAModem: board.json del mismo router. El WAN no es una boca, es el
+// device del módem QMI.
+const boardWanIsAModem = `{"network":{"lan":{"ports":["lan1","lan2"],"protocol":"static"},` +
+	`"wan":{"device":"/dev/cdc-wdm0","protocol":"qmi"}}}`
+
+func TestParsePortStatesTipoYConduit(t *testing.T) {
+	states := ParsePortStates(portStatesDSASwitch)
+	byName := map[string]PortState{}
+	for _, s := range states {
+		byName[s.Name] = s
+	}
+	if got := byName["lan1"]; got.Conduit != "eth0" || got.Type != ARPHRDEther {
+		t.Fatalf("lan1: %+v", got)
+	}
+	if got := byName["eth0"]; got.Conduit != "" {
+		t.Fatalf("eth0 no cuelga de nadie: %+v", got)
+	}
+	if got := byName["wwan0"]; got.Type == ARPHRDEther {
+		t.Fatalf("wwan0 no es ethernet: %+v", got)
+	}
+	// Forma antigua de tres campos: sin tipo ni conduit, y nada se descarta.
+	old := ParsePortStates("lan1 up 1000\neth0 up 2500\n")
+	if len(old) != 2 || old[0].Type != 0 || old[0].Conduit != "" {
+		t.Fatalf("tres campos: %+v", old)
+	}
+	if ports := BuildEthPorts(nil, old, nil, nil, ""); len(ports) != 2 {
+		t.Fatalf("tres campos no debe esconder bocas: %+v", ports)
+	}
+}
+
+func TestBuildEthPortsSoloLasBocasReales(t *testing.T) {
+	layout, err := ParsePortLayout(boardWanIsAModem)
+	if err != nil {
+		t.Fatalf("layout: %v", err)
+	}
+	ports := BuildEthPorts(layout, ParsePortStates(portStatesDSASwitch), nil, nil, "")
+	ids := []string{}
+	for _, p := range ports {
+		ids = append(ids, p.ID)
+	}
+	// Antes salían cuatro: WAN (el módem, nunca conectada), LAN 1, LAN 2 y
+	// ETH 0 (el puerto de CPU del switch).
+	if len(ids) != 2 || ids[0] != "lan1" || ids[1] != "lan2" {
+		t.Fatalf("bocas: %v", ids)
+	}
+}
+
+func TestBuildEthPortsUplinkNoEthernet(t *testing.T) {
+	// board.json puede nombrar como WAN una interfaz que existe pero no es
+	// ethernet (el netdev del módem); tampoco es una boca.
+	layout := []PortLayout{
+		{ID: "wan", Name: "wwan0", Label: "WAN", Role: "wan"},
+		{ID: "lan1", Name: "lan1", Label: "LAN 1", Role: "lan"},
+	}
+	ports := BuildEthPorts(layout, ParsePortStates(portStatesDSASwitch), nil, nil, "")
+	ids := map[string]bool{}
+	for _, p := range ports {
+		ids[p.ID] = true
+	}
+	if ids["wan"] || ids["wwan0"] {
+		t.Fatalf("el módem no es una boca: %+v", ports)
+	}
+	// lan2 no está en el layout pero sí en /sys: entra como extra.
+	if len(ids) != 2 || !ids["lan1"] || !ids["lan2"] {
+		t.Fatalf("bocas: %+v", ports)
+	}
+}
+
+func TestBuildEthPortsMantieneEthSinSwitch(t *testing.T) {
+	// Caja sin switch DSA (x86, BPI-R4): nadie declara eth0 como puerto de
+	// CPU, así que sigue siendo una boca. Sin layout, el fallback toma eth1
+	// como WAN (comportamiento previo, aquí solo interesa que eth0 siga).
+	states := ParsePortStates("eth0 up 1000 - 1 -\neth1 up 2500 - 1 -\nlo unknown -1 - 772 -\n")
+	ports := BuildEthPorts(nil, states, nil, nil, "")
+	ids := map[string]bool{}
+	for _, p := range ports {
+		ids[p.ID] = true
+	}
+	if len(ids) != 2 || !ids["eth0"] {
+		t.Fatalf("eth0 sin switch debe seguir siendo boca: %+v", ports)
+	}
+}
+
+// dumpUplinkNotNamedWan: forma de `ubus call network.interface dump` en una placa cuyo enlace
+// recortada a lo que mira el parser y con la IP pública cambiada. El uplink
+// vivo es un PPPoE llamado "isp" sobre la boca lan1; la interfaz que SÍ se
+// llama "wan" es el módem celular, ocioso pero con up=true y sin ruta.
+const dumpUplinkNotNamedWan = `{"interface":[
+ {"interface":"lan","up":true,"proto":"static","l3_device":"br-lan.10","device":"br-lan.10",
+  "ipv4-address":[{"address":"192.0.2.1","mask":24}],"route":[]},
+ {"interface":"wan","up":true,"proto":"qmi","l3_device":"wwan0",
+  "ipv4-address":[],"route":[],"dns-server":[]},
+ {"interface":"isp","up":true,"proto":"pppoe","l3_device":"pppoe-isp","device":"lan1",
+  "ipv4-address":[{"address":"203.0.113.45","mask":32,"ptpaddress":"198.51.100.1"}],
+  "route":[{"target":"0.0.0.0","mask":0,"nexthop":"198.51.100.1"}],
+  "dns-server":["198.51.100.53","198.51.100.54"]}]}`
+
+func TestParseWanStatusDumpEligeElUplinkVivo(t *testing.T) {
+	info := ParseWanStatus([]byte(dumpUplinkNotNamedWan))
+	if info.Proto != "pppoe" || info.Device != "pppoe-isp" {
+		t.Fatalf("no eligió el PPPoE vivo: %+v", info)
+	}
+	if info.Port != "lan1" {
+		t.Fatalf("boca del uplink: %q, esperaba lan1", info.Port)
+	}
+	if info.IP != "203.0.113.45" || info.Gateway != "198.51.100.1" {
+		t.Fatalf("ip/gateway: %+v", info)
+	}
+	if len(info.DNS) != 2 {
+		t.Fatalf("dns: %+v", info.DNS)
+	}
+}
+
+func TestParseWanStatusDumpCaeALaLlamadaWan(t *testing.T) {
+	// Router normal con el enlace caído: ninguna tiene ruta por defecto, así
+	// que manda la que se llama "wan" (WAN caída, no router sin WAN).
+	dump := `{"interface":[{"interface":"lan","up":true,"proto":"static","route":[]},
+	 {"interface":"wan","up":false,"proto":"dhcp","l3_device":"eth1","device":"eth1","route":[]}]}`
+	info := ParseWanStatus([]byte(dump))
+	if info.Proto != "dhcp" || info.Port != "eth1" {
+		t.Fatalf("fallback a la llamada wan: %+v", info)
+	}
+	// Sin ninguna interfaz utilizable (AP puro) → vacío.
+	if got := ParseWanStatus([]byte(`{"interface":[{"interface":"lan","up":true,"route":[]}]}`)); got.Proto != "" || got.Port != "" {
+		t.Fatalf("AP sin wan: %+v", got)
+	}
+}
+
+func TestBuildEthPortsMarcaLaBocaDelUplink(t *testing.T) {
+	layout, err := ParsePortLayout(boardWanIsAModem)
+	if err != nil {
+		t.Fatalf("layout: %v", err)
+	}
+	uplink := ParseWanStatus([]byte(dumpUplinkNotNamedWan)).Port
+	ports := BuildEthPorts(layout, ParsePortStates(portStatesDSASwitch), nil, nil, uplink)
+	if len(ports) != 2 {
+		t.Fatalf("bocas: %+v", ports)
+	}
+	// lan1 lleva el PPPoE: sale como WAN sin moverse de sitio.
+	if ports[0].ID != "wan" || ports[0].Label != "WAN" {
+		t.Fatalf("la boca del uplink debía salir como WAN: %+v", ports[0])
+	}
+	if ports[1].ID != "lan2" {
+		t.Fatalf("el resto no se toca: %+v", ports[1])
+	}
+}
+
+func TestBuildEthPortsNoPisaUnaWanDelLayout(t *testing.T) {
+	// Router con boca WAN dedicada: el layout ya la trae y el uplink no
+	// debe promover ninguna otra.
+	layout := []PortLayout{
+		{ID: "wan", Name: "wan", Label: "WAN", Role: "wan"},
+		{ID: "lan1", Name: "lan1", Label: "LAN 1", Role: "lan"},
+	}
+	states := ParsePortStates("wan up 1000 - 1 -\nlan1 up 1000 - 1 -\n")
+	ports := BuildEthPorts(layout, states, nil, nil, "lan1")
+	if len(ports) != 2 || ports[0].ID != "wan" || ports[1].ID != "lan1" {
+		t.Fatalf("bocas: %+v", ports)
+	}
+}
+
+func TestBuildEthPortsUplinkEtiquetado(t *testing.T) {
+	// Uplink sobre VLAN ("lan1.7"): la boca es la de debajo.
+	layout := []PortLayout{{ID: "lan1", Name: "lan1", Label: "LAN 1", Role: "lan"}}
+	states := ParsePortStates("lan1 up 1000 - 1 -\n")
+	ports := BuildEthPorts(layout, states, nil, nil, "lan1.7")
+	if len(ports) != 1 || ports[0].ID != "wan" {
+		t.Fatalf("bocas: %+v", ports)
+	}
+}
+
+// A neighbour table with every state that matters: what the kernel has
+// confirmed, and what it merely remembers.
+func TestParseIPNeighSeparatesConfirmedFromRemembered(t *testing.T) {
+	out := strings.Join([]string{
+		"192.0.2.10 dev br-lan lladdr 02:00:00:00:00:10 REACHABLE",
+		"192.0.2.11 dev br-lan lladdr 02:00:00:00:00:11 STALE",
+		"192.0.2.12 dev br-lan lladdr 02:00:00:00:00:12 DELAY",
+		"192.0.2.13 dev br-lan lladdr 02:00:00:00:00:13 PERMANENT",
+		"192.0.2.14 dev br-lan  FAILED",
+		"192.0.2.15 dev br-lan lladdr 02:00:00:00:00:15 FAILED",
+		"192.0.2.16 dev br-lan lladdr 00:00:00:00:00:00 REACHABLE",
+		"not-an-ip dev br-lan lladdr 02:00:00:00:00:17 REACHABLE",
+	}, "\n")
+	arp, stale := ParseIPNeigh(out)
+
+	if len(arp) != 5 {
+		t.Fatalf("arp: %+v", arp)
+	}
+	if arp["02:00:00:00:00:10"] != "192.0.2.10" || arp["02:00:00:00:00:11"] != "192.0.2.11" {
+		t.Fatalf("addresses: %+v", arp)
+	}
+	// A stale entry still resolves an IP; it just proves nothing.
+	for _, mac := range []string{"02:00:00:00:00:11", "02:00:00:00:00:15"} {
+		if !stale[mac] {
+			t.Fatalf("%s should be stale: %+v", mac, stale)
+		}
+	}
+	for _, mac := range []string{"02:00:00:00:00:10", "02:00:00:00:00:12", "02:00:00:00:00:13"} {
+		if stale[mac] {
+			t.Fatalf("%s is confirmed: %+v", mac, stale)
+		}
+	}
+	// An entry with no lladdr, a null MAC or a broken address is not a host.
+	if _, ok := arp["00:00:00:00:00:00"]; ok {
+		t.Fatalf("null MAC: %+v", arp)
+	}
+	if _, ok := arp["02:00:00:00:00:17"]; ok {
+		t.Fatalf("invalid IP: %+v", arp)
+	}
+}
+
+// One confirmed address is enough for a host with several of them, whatever
+// order the table lists them in.
+func TestParseIPNeighConfirmedWinsOverStale(t *testing.T) {
+	for _, out := range []string{
+		"192.0.2.20 dev br-lan lladdr 02:00:00:00:00:20 STALE\n" +
+			"192.0.2.21 dev br-lan lladdr 02:00:00:00:00:20 REACHABLE",
+		"192.0.2.21 dev br-lan lladdr 02:00:00:00:00:20 REACHABLE\n" +
+			"192.0.2.20 dev br-lan lladdr 02:00:00:00:00:20 STALE",
+	} {
+		arp, stale := ParseIPNeigh(out)
+		if stale["02:00:00:00:00:20"] {
+			t.Fatalf("a confirmed address must settle the host: %+v", stale)
+		}
+		if arp["02:00:00:00:00:20"] != "192.0.2.21" {
+			t.Fatalf("the confirmed address should be the one kept: %+v", arp)
+		}
+	}
+}
+
+func TestParseIPNeighOnGarbage(t *testing.T) {
+	arp, stale := ParseIPNeigh("ip: command not found\n\n")
+	if len(arp) != 0 || len(stale) != 0 {
+		t.Fatalf("garbage: %+v %+v", arp, stale)
 	}
 }

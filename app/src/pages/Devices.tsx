@@ -1225,18 +1225,9 @@ export default function Devices() {
     return { allDevices: list.map((d) => (infra.has(d.id) ? { ...d, group: 'infra' as const } : d)), infraById: infra }
   }, [devices, isDemo, distributionNodes, deviceOverrides])
 
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [q, setQ] = useState(() => (searchParams.get('q') ?? '').trim().toLowerCase())
-
-  // Enlaces entrantes tipo /devices?q=<mac|ip|nombre> (p.ej. desde Puertos)
-  useEffect(() => {
-    const incoming = searchParams.get('q')
-    if (incoming !== null) {
-      setQuery(incoming)
-      setQ(incoming.trim().toLowerCase())
-    }
-  }, [searchParams])
 
   // Deep-link de onboarding (#772): /devices?intake=<mac> abre la tarjeta de
   // alta para ese dispositivo (la alerta "desconocido" lo enlaza).
@@ -1255,6 +1246,20 @@ export default function Devices() {
     setOnlineState(v)
   }, [])
   const [onlyWeak, setOnlyWeak] = useState(false)
+
+  // Enlaces entrantes tipo /devices?q=<mac|ip|nombre> (p.ej. desde Puertos)
+  useEffect(() => {
+    const incoming = searchParams.get('q')
+    if (incoming !== null) {
+      setQuery(incoming)
+      setQ(incoming.trim().toLowerCase())
+      // A deep link asks for one specific device, so the online-only default
+      // must not hide it: an alert about a device that has since dropped off
+      // would otherwise land on an empty list.
+      setOnline('all')
+    }
+  }, [searchParams, setOnline])
+
   const weakCount = useMemo(
     () => allDevices.filter((d) => d.online && d.signalDbm !== null && d.signalDbm < -70).length,
     [allDevices],
@@ -1700,7 +1705,18 @@ export default function Devices() {
         open={intakeId !== null}
         device={allDevices.find((d) => d.id === intakeId) ?? null}
         isDemo={isDemo}
-        onClose={() => setIntakeId(null)}
+        onClose={() => {
+          setIntakeId(null)
+          // Drop ?intake= from the URL once the dialog is closed. The effect
+          // that opens it re-runs every time the device list refreshes, so
+          // leaving the parameter in place reopened the dialog after every
+          // dismissal, indefinitely.
+          if (searchParams.has('intake')) {
+            const next = new URLSearchParams(searchParams)
+            next.delete('intake')
+            setSearchParams(next, { replace: true })
+          }
+        }}
         onSaved={(outcome) => {
           refresh()
           showToast(t(outcome === 'dismissed' ? 'devices.onboarding.dismissed' : 'devices.onboarding.saved'))

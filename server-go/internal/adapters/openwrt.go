@@ -371,10 +371,18 @@ func (c *OpenWrtClient) GetDhcpLeases() []DhcpLease {
 	return parseDhcpLeasesFile(out)
 }
 
-// GetWanInfo: estado de la interfaz WAN (solo gateway, issue #276).
-// Via ubus network.interface.wan status; si el router no lo tiene (AP),
-// devuelve WanInfo vacío.
+// GetWanInfo: estado del uplink (issue #276). Via ubus network.interface
+// dump, que trae todas las interfaces y deja elegir la que lleva internet
+// por su ruta por defecto en vez de por llamarse "wan" (un PPPoE puede
+// llamarse de cualquier forma, y el nombre "wan" puede ser un módem ocioso).
+// Cae al status de la interfaz "wan" con los ubus antiguos; si el router no
+// tiene ninguna (AP), devuelve WanInfo vacío.
 func (c *OpenWrtClient) GetWanInfo() probe.WanInfo {
+	if raw, err := c.UbusCall("network.interface", "dump", nil); err == nil {
+		if info := probe.ParseWanStatus(raw); info.Proto != "" || info.IP != "" || info.Gateway != "" {
+			return info
+		}
+	}
 	raw, err := c.UbusCall("network.interface.wan", "status", nil)
 	if err == nil {
 		return probe.ParseWanStatus(raw)
@@ -545,7 +553,7 @@ func parsePortLayout(out string) ([]PortLayout, error) {
 // GetEthPorts: layout + estado /sys; AP en bridge re-etiqueta wan→LAN N+1;
 // fallback heurístico sin config. rates = contadores por iface (#305, de
 // GetNetDev; nil = sin stats). Devuelve []EthPort listo para el detalle.
-func (c *OpenWrtClient) GetEthPorts(layout []PortLayout, rates map[string]probe.IfRate) []EthPort {
+func (c *OpenWrtClient) GetEthPorts(layout []PortLayout, rates map[string]probe.IfRate, uplink string) []EthPort {
 	states := c.GetPortStates()
 	members := map[string]bool{}
 	if len(layout) > 0 {
@@ -557,7 +565,7 @@ func (c *OpenWrtClient) GetEthPorts(layout []PortLayout, rates map[string]probe.
 			}
 		}
 	}
-	return ethPortsToAdapter(probe.BuildEthPorts(layout, states, members, rates))
+	return ethPortsToAdapter(probe.BuildEthPorts(layout, states, members, rates, uplink))
 }
 
 // ethPortsToAdapter convierte el shape compartido al EthPort del contrato.
@@ -664,11 +672,21 @@ func radiosToAdapter(in []probe.Radio) []Radio {
 }
 
 // GetArp devuelve la tabla ARP del equipo (MAC→IP, #377). Fuente barata
-// (cat /proc/net/arp) para resolver IPs cuando el DHCP no es local.
-func (c *OpenWrtClient) GetArp() map[string]string {
+// para resolver IPs cuando el DHCP no es local.
+//
+// Reads `ip neigh` so the state of each entry comes with it, and returns the
+// MACs the kernel remembers without confirming (stale): their address is
+// still usable, but they are not evidence that the host is connected. Falls
+// back to /proc/net/arp, where no state is available and nothing is stale.
+func (c *OpenWrtClient) GetArp() (arp map[string]string, stale map[string]bool) {
+	if out, err := c.pool.Run(c.Host, probe.CmdIpNeigh, 0); err == nil {
+		if m, st := probe.ParseIPNeigh(out); len(m) > 0 {
+			return m, st
+		}
+	}
 	out, err := c.pool.Run(c.Host, probe.CmdProcArp, 0)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	return probe.ParseArp(out)
+	return probe.ParseArp(out), nil
 }

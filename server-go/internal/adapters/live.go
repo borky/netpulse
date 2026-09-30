@@ -107,7 +107,12 @@ type routerPolled struct {
 	glClients []DhcpLease
 	// arp: MAC→IP de /proc/net/arp (#377). Último recurso de resolución de
 	// IP cuando ni el lease ni gl-clients la tienen (DHCP en otro equipo).
-	arp       map[string]string
+	arp map[string]string
+	// arpStale: the subset of `arp` the kernel remembers without having
+	// confirmed (STALE/FAILED/INCOMPLETE). Good enough to resolve an IP,
+	// never enough to claim the host is connected -- an entry outlives the
+	// device by minutes. Empty when the source could not report states.
+	arpStale  map[string]bool
 	wireless  map[string]WirelessClient
 	ports     []EthPort
 	radios    []Radio
@@ -945,13 +950,13 @@ func (l *Live) pollRouter(ctx context.Context, cfg RouterConfig) (*routerPolled,
 		net = &NetDevBps{}
 	}
 	leases := client.GetDhcpLeases()
-	arp := client.GetArp()
+	arp, arpStale := client.GetArp()
 	// gl-clients (GL.iNet): complementa la resolución de IP donde dnsmasq no
 	// tiene lease (issue #5 bug 1). En routers sin el objeto ubus sale vacío
 	// — coste: una llamada ubus local por poll.
 	glClients := client.GetGlClients()
 	wireless := client.GetWirelessClients()
-	ports := client.GetEthPorts(layout, ifRates)
+	ports := client.GetEthPorts(layout, ifRates, l.probeWanInfo(cfg.ID, client).Port)
 	radios := client.GetRadios()
 	fdb := client.GetBridgeFdb()
 	brMac := client.GetBridgeMac()
@@ -1047,7 +1052,7 @@ func (l *Live) pollRouter(ctx context.Context, cfg RouterConfig) (*routerPolled,
 	return &routerPolled{
 		cfg: cfg, client: client, sysInfo: sysInfo, board: board,
 		cpu: cpuV, ram: ramPct, temp: tempV,
-		uptimeSec: sysInfo.Uptime, net: net, leases: leases, arp: arp, glClients: glClients,
+		uptimeSec: sysInfo.Uptime, net: net, leases: leases, arp: arp, arpStale: arpStale, glClients: glClients,
 		wireless: wirelessGood, ports: portsGood, radios: radiosGood,
 		fdb: fdbGood, brMac: brMac, latencyMs: latencyMs, lossPct: lossPct,
 		backhaul: backhaul, lldp: lldp, lldpUnavailable: lldpUnavailable,
@@ -1629,7 +1634,7 @@ func (l *Live) trackWanDown(cfg *RouterConfig, p *routerPolled) {
 // NO alerta (evita la avalancha de arranque: todo lo ya conectado sería
 // "nuevo"). Las MAC de la allowlist known_macs (issue #196) nunca alertan,
 // haya alias o no. Toma l.mu internamente.
-func (l *Live) trackUnknownDevices(devices []Device) {
+func (l *Live) trackUnknownDevices(devices []Device, dists []DistributionNode) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	// issue #196: MACs de la allowlist (confiables) → nunca "desconocido".
@@ -1672,7 +1677,7 @@ func (l *Live) trackUnknownDevices(devices []Device) {
 		if l.seenOnlineMacs && (counting || !l.onlineMacs[d.MAC]) {
 			l.unknownGrace[d.MAC]++
 			if l.unknownGrace[d.MAC] >= l.unknownGraceNum {
-				l.emitUnknownDevice(d)
+				l.emitUnknownDevice(d, devices, dists)
 				l.unknownAlerted[d.MAC] = true
 				l.persistUnknownAlerted(d.MAC)
 				delete(l.unknownGrace, d.MAC)
@@ -1716,15 +1721,36 @@ func (l *Live) routerDisplayName(id string) string {
 // clients, warn, NO urgente — issue #196). "Desconocido" = sin nombre/alias:
 // device_attrib no guarda alias, así que la señal práctica es un cliente sin
 // hostname DHCP (Name == MAC). Debe llamarse con l.mu tomado.
-func (l *Live) emitUnknownDevice(d Device) {
-	vars := map[string]string{"mac": d.MAC, "router": l.routerDisplayName(d.RouterID)}
-	if d.Band != "" {
+//
+// The alert has to be actionable: a MAC on its own tells nobody which box to
+// walk up to, so it also carries the IP, what the client hangs off and the
+// port there, when those are known. They are: this runs after the topology
+// pass and the Proxmox/UniFi seals, so AttachTo is already resolved.
+func (l *Live) emitUnknownDevice(d Device, devices []Device, dists []DistributionNode) {
+	where, port := l.deviceLocation(d, devices, dists)
+	vars := map[string]string{
+		"mac":    d.MAC,
+		"router": l.routerDisplayName(d.RouterID),
+		"where":  where,
+	}
+	// Only the facts we actually have: the app renders one row per var and an
+	// empty one would read as "we know this and it is blank".
+	if d.IP != "" {
+		vars["ip"] = d.IP
+	}
+	if port != "" {
+		vars["port"] = port
+	}
+	if d.Band != "" && d.Band != "—" {
 		vars["band"] = d.Band
 	}
 	if d.SignalDbm != nil {
 		vars["signal"] = fmt.Sprintf("%d", *d.SignalDbm)
 	}
-	desc := fmt.Sprintf("%s se ha conectado a %s", d.MAC, d.RouterID)
+	desc := fmt.Sprintf("%s se ha conectado a %s", d.MAC, where)
+	if d.IP != "" {
+		desc = fmt.Sprintf("%s · %s se ha conectado a %s", d.MAC, d.IP, where)
+	}
 	if d.Band != "" && d.Band != "cable" {
 		desc += " · " + d.Band
 	}
@@ -1757,6 +1783,56 @@ func (l *Live) DismissUnknownDevice(mac string) {
 	l.unknownAlerted[mac] = true
 	l.persistUnknownAlerted(mac)
 	delete(l.unknownGrace, mac)
+}
+
+// deviceLocation: where a client is plugged in, as the two strings the alert
+// interpolates. `where` is the box it hangs off — the AP, switch or
+// hypervisor named by AttachTo, which may be a distribution node or another
+// device acting as a hub — falling back to its router, which is always known.
+// `port` is the physical port when the bridge FDB or the controller reports
+// one (empty for wireless clients). Must be called with l.mu held.
+func (l *Live) deviceLocation(d Device, devices []Device, dists []DistributionNode) (where, port string) {
+	port = d.PortLabel
+	if port == "" {
+		port = d.Port
+	}
+	if d.AttachTo != "" {
+		for _, n := range dists {
+			if n.ID != d.AttachTo {
+				continue
+			}
+			where = firstNonEmpty(n.Name, n.Ip)
+			// A client behind a switch is learnt on the router port that the
+			// switch itself hangs off, so that port describes the uplink, not
+			// the client: naming it next to the switch would send someone to
+			// the wrong socket.
+			if n.Port == d.Port {
+				port = ""
+			}
+			break
+		}
+		if where == "" {
+			for _, o := range devices {
+				if o.ID == d.AttachTo {
+					where = firstNonEmpty(o.Name, o.IP)
+					break
+				}
+			}
+		}
+	}
+	if where == "" {
+		where = l.routerDisplayName(d.RouterID)
+	}
+	return where, port
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // trackDevicePresence emite device_offline/device_online cuando una MAC
@@ -2074,10 +2150,29 @@ func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 	}
 	l.mu.Lock()
 	gw := l.gatewayCfg
+	registered := make(map[string]bool, len(l.routers))
+	for _, rc := range l.routers {
+		registered[rc.ID] = true
+	}
 	l.mu.Unlock()
 	gwID := ""
 	if gw != nil {
 		gwID = gw.ID
+	}
+	// A stored attribution outlives the router it names. Deleting a router --
+	// or an integration that registered some, as the UniFi scraper did for
+	// each AP -- leaves its clients in device_attrib pointing at an id that
+	// no longer exists, and every per-router count then attributes them to
+	// nothing: the gateway's card showed 18 of the 45 clients it serves.
+	// Hand them to the gateway, which is the router actually serving them
+	// once the one they remember is gone.
+	if gwID != "" {
+		for mac, k := range known {
+			if k.routerID != "" && !registered[k.routerID] {
+				k.routerID = gwID
+				known[mac] = k
+			}
+		}
 	}
 	// (2) FDB de satélites: pista solo de ESTE tick (no se guarda).
 	// REGLA DE RECONCILIACIÓN (issue #656): una MAC aprendida por un satélite
@@ -2134,13 +2229,31 @@ func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 	}
 	// (4) ARP (#507): hosts cableados con IP estática visibles SOLO en la
 	// tabla ARP del router (ni wireless, ni FDB, ni lease, ni device_attrib).
-	// Presencia en la tabla = activo recientemente → online este tick. No se
-	// persiste: cuando la entrada envejece, el host desaparece del snapshot.
 	// Se itera en orden de router ID para atribuir deterministamente el
 	// RouterID correcto cuando varios routers ven la misma MAC (misma LAN).
 	// La exclusión de MACs de router/bridge se aplica en el bucle de
 	// dispositivos (routerMacs), igual que para leases/known: aquí no se
 	// duplica ese filtro.
+	//
+	// Presence needs a CONFIRMED neighbour, not merely an entry in the
+	// table: the kernel keeps a stale neighbour for minutes after the host
+	// has gone, and this branch is the last resort -- the host has no lease,
+	// no FDB entry and no wireless association, so nothing else would
+	// contradict it. The map then drew a device that is not there, and, with
+	// no port either, hung it off the gateway bubble. A host that really is
+	// connected answers, so the kernel reconfirms it and it stays; a host
+	// that is only remembered drops out on the next tick instead of waiting
+	// for the entry to age out. A source that cannot report states (old
+	// agent, /proc/net/arp fallback) marks nothing stale and keeps the old
+	// behaviour.
+	arpConfirmed := map[string]bool{}
+	for _, p := range polled {
+		for mac := range p.arp {
+			if !p.arpStale[mac] {
+				arpConfirmed[mac] = true
+			}
+		}
+	}
 	arpRouterIDs := make([]string, 0, len(polled))
 	for routerID := range polled {
 		arpRouterIDs = append(arpRouterIDs, routerID)
@@ -2155,6 +2268,9 @@ func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 				continue
 			}
 			if _, ok := known[mac]; ok {
+				continue
+			}
+			if !arpConfirmed[mac] {
 				continue
 			}
 			seen[mac] = seenInfo{routerID, "cable", nil}
@@ -2657,21 +2773,10 @@ func (l *Live) buildOverview(ctx context.Context) (*Overview, error) {
 			l.mu.Unlock()
 		}
 	}
-	l.trackUnknownDevices(devices)
+	l.trackUnknownDevices(devices, distNodes)
 	l.trackDevicePresence(devices, time.Now().UnixMilli())
 	// Clientes reales por router (atribución wireless/FDB, no leases)
-	for i := range routerList {
-		n := 0
-		var split demoBandSplit
-		for _, d := range devices {
-			if d.RouterID == routerList[i].ID && d.Online {
-				n++
-				countBand(&split, d.Band)
-			}
-		}
-		routerList[i].Clients = n
-		routerList[i].BandSplit = &split
-	}
+	countClientsPerRouter(routerList, devices)
 	// Sparkline de la tarjeta para fuentes sin throughput bps (switch beacon/
 	// SNMP sin métricas agregadas): su línea de tráfico 24h sale de los fps de
 	// sus puertos (port_series), no de la tabla metrics (siempre 0 ahí).
@@ -2837,7 +2942,39 @@ func (l *Live) GetRouters(context.Context) []Router {
 		}
 		out = append(out, l.buildRouter(p, l.metricsHistory(cfg.ID, "24h")))
 	}
+	// buildRouter leaves Clients as the DHCP lease count, which is not the
+	// number the card means: it counts devices that are offline and misses
+	// every device without a lease. The overview has always corrected it;
+	// this endpoint did not, so the routers page and the map disagreed --
+	// 34 against 45 on the same router.
+	countClientsPerRouter(out, l.attributedDevices())
 	return out
+}
+
+// countClientsPerRouter sets each router's client count and band split to
+// the online devices attributed to it. Attribution is per router, not per
+// subtree: in a mesh each node counts its own stations, and clients of gear
+// that is not a NetPulse router (a UniFi AP, say) belong to the router that
+// serves them.
+func countClientsPerRouter(routers []Router, devices []Device) {
+	counts := make(map[string]int, len(routers))
+	splits := make(map[string]*demoBandSplit, len(routers))
+	for i := range routers {
+		splits[routers[i].ID] = &demoBandSplit{}
+	}
+	for _, d := range devices {
+		if !d.Online {
+			continue
+		}
+		if split, ok := splits[d.RouterID]; ok {
+			counts[d.RouterID]++
+			countBand(split, d.Band)
+		}
+	}
+	for i := range routers {
+		routers[i].Clients = counts[routers[i].ID]
+		routers[i].BandSplit = splits[routers[i].ID]
+	}
 }
 
 // liveExtras es el objeto extras del detalle live (index.js:677-700).
@@ -3205,6 +3342,15 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 // GetDevices: buildDevices sobre el último sondeo (+ inferencia FDB de
 // topología: Port/AttachTo, como en buildOverview).
 func (l *Live) GetDevices(context.Context) []Device {
+	return l.attributedDevices()
+}
+
+// attributedDevices builds the device list with everything that decides who
+// a device belongs to and whether it is online: inference over the sticky
+// FDB overlay, then the Proxmox and UniFi seals. The seals are not optional
+// for a count -- the UniFi one is what marks a station on a controller AP as
+// online, and without it a router's clients come out short.
+func (l *Live) attributedDevices() []Device {
 	l.mu.Lock()
 	polled := l.lastPolled
 	l.mu.Unlock()

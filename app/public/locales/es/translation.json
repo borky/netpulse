@@ -213,7 +213,8 @@
       },
       "unknown-device": {
         "title": "Dispositivo desconocido",
-        "description": "{{mac}} se ha conectado a {{router}}"
+        "description": "{{mac}} se ha conectado a {{router}}",
+        "descriptionWhere": "{{mac}} · {{ip}} se ha conectado a {{where}}"
       },
       "wan-down": {
         "title": "Internet caído",
@@ -1090,6 +1091,7 @@
       "hypervisorCable": "Cable de hipervisor",
       "inferredSwitch": "Switch inferido · {{port}}",
       "managedSwitch": "Switch gestionado",
+      "managedAp": "Punto de acceso",
       "throughput": "Throughput del enlace",
       "title": "Enlaces entre equipos",
       "wifiUplink": "WiFi uplink"
@@ -1131,9 +1133,10 @@
       "inferred": "inferido",
       "managed": "switch gestionado",
       "noIp": "sin IP · no consultable directamente",
-      "port": "Puerto de {{router}}",
+      "port": "Puerto de {{owner}}",
       "macs": "MACs aprendidas",
-      "fdbNote": "FDB: {{count}} MACs heterogéneas en un solo puerto físico. Probablemente un switch; no podemos afirmarlo sin LLDP."
+      "fdbNote": "FDB: {{count}} MACs heterogéneas en un solo puerto físico. Probablemente un switch; no podemos afirmarlo sin LLDP.",
+      "ap": "Punto de acceso"
     },
     "host": {
       "hypervisor": "hipervisor",

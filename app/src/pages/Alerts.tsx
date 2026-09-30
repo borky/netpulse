@@ -188,6 +188,16 @@ function ContextPanel({ ev, animateIn }: { ev: FeedEvent; animateIn: boolean }) 
   const { t } = useTranslation()
   const c = ev.context
   const PeerIcon = c?.wg ? PEER_ICONS[c.wg.peerType] : null
+  // Unknown device: the point of the alert is finding the thing, so the
+  // panel lists where it is (IP, the box it hangs off, the port) and links
+  // to it in the client list. The server only sends the facts it has.
+  const v = ev.type === 'unknown-device' ? (ev.vars ?? {}) : {}
+  const locate: { label: string; value: string }[] = []
+  if (v.ip) locate.push({ label: 'IP', value: v.ip })
+  if (v.mac) locate.push({ label: 'MAC', value: v.mac })
+  if (v.where) locate.push({ label: t('alerts.connectedTo'), value: v.where })
+  if (v.port) locate.push({ label: t('alerts.port'), value: v.port })
+  if (v.band) locate.push({ label: t('devices.colBand'), value: v.band })
   return (
     <div className="space-y-3 rounded-xl border border-border bg-elevated/60 p-4">
       {c?.spark && <ThresholdSpark spark={c.spark} animateIn={animateIn} />}
@@ -220,6 +230,14 @@ function ContextPanel({ ev, animateIn }: { ev: FeedEvent; animateIn: boolean }) 
         </div>
       )}
 
+      {locate.length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {locate.map((f) => (
+            <Fact key={f.label} label={f.label} value={f.value} />
+          ))}
+        </div>
+      )}
+
       {c?.facts && (
         <div className="grid gap-2 sm:grid-cols-2">
           {c.facts.map((f) => (
@@ -230,16 +248,25 @@ function ContextPanel({ ev, animateIn }: { ev: FeedEvent; animateIn: boolean }) 
 
       {c?.note && <p className="text-caption leading-relaxed text-text-muted">{c.note}</p>}
 
+      {/* FORK: finding the device and identifying it are separate actions.
+          Upstream pointed this link at the identify dialog for unknown
+          devices, so there was no longer a way to see it in the list. */}
       {ev.vars?.mac && (
         <Link
-          to={
-            intakeMacOf(ev)
-              ? `/devices?intake=${encodeURIComponent(ev.vars.mac)}`
-              : `/devices?q=${encodeURIComponent(ev.vars.mac)}`
-          }
-          className="group inline-flex items-center gap-1 text-caption font-semibold text-accent transition-colors hover:text-accent/80"
+          to={`/devices?q=${encodeURIComponent(ev.vars.mac)}`}
+          className="group mr-4 inline-flex items-center gap-1 text-caption font-semibold text-accent transition-colors hover:text-accent/80"
         >
           {t('alerts.findDevice')}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-150 group-hover:translate-x-0.5" strokeWidth={1.75} />
+        </Link>
+      )}
+
+      {intakeMacOf(ev) && (
+        <Link
+          to={`/devices?intake=${encodeURIComponent(intakeMacOf(ev) ?? '')}`}
+          className="group mr-4 inline-flex items-center gap-1 text-caption font-semibold text-accent transition-colors hover:text-accent/80"
+        >
+          {t('alerts.identifyDevice')}
           <ArrowRight className="h-3.5 w-3.5 transition-transform duration-150 group-hover:translate-x-0.5" strokeWidth={1.75} />
         </Link>
       )}
@@ -448,7 +475,6 @@ function FeedRow({ ev, index, read, expanded, onToggle, reduce, onSilence, onDis
 
 export default function Alerts() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const reduce = useReducedMotion() ?? false
   const {
     alerts,
@@ -475,6 +501,7 @@ export default function Alerts() {
   const [kind, setKind] = useState<KindFilter>('todos')
   const [cats, setCats] = useState<ReadonlySet<AlertCategory>>(new Set())
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [onlyUnread, setOnlyUnread] = useState(() => searchParams.get('unread') === '1')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [burst, setBurst] = useState(0)
@@ -496,15 +523,11 @@ export default function Alerts() {
 
   const toggleEvent = (ev: FeedEvent) => {
     if (!ev.read) markAlertsRead([ev.id])
-    // #827: la alerta de desconocido lleva directa al alta del dispositivo;
-    // el resto sigue desplegando el panel de contexto. La misma acción
-    // existe como icono en la fila (#833), junto a "limpiar alerta".
-    const mac = intakeMacOf(ev)
-    if (mac) {
-      setExpandedId(null)
-      navigate(`/devices?intake=${encodeURIComponent(mac)}`)
-      return
-    }
+    // FORK: every alert expands, the unknown-device one included. Upstream
+    // (#827) sent that one straight to the identify dialog, which hid where
+    // the device is and what to do about it. Identifying it is one of the
+    // actions in the expanded panel, and upstream's row icon (#833) still
+    // offers it as a shortcut.
     setExpandedId((cur) => (cur === ev.id ? null : ev.id))
   }
 
