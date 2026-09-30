@@ -5,6 +5,26 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.41] - 2026-09-30
+
+### Added
+
+- **Serie WAN / VLANs / alertas del fork borky (#946)**: soporte multi-WAN, política de uplink en el agente, alerta cuando cambia la conexión de salida a internet, el detalle del router muestra sus conexiones, VLANs leídas del router y panel de bocas enlazado por el puerto real. Atribuido a borky.
+- **Salud del sondeo SNMP por dispositivo (#930)**: contadores de aciertos/fallos por router SNMP, ping ICMP de respaldo sin privilegios, alerta `snmp-failing` tras 3 fallos seguidos solo si el host responde a ping (pista de community/puerto mal configurados), alerta de recuperación y contadores visibles en el detalle del router y en la tarjeta de puertos.
+- **Last seen en clientes (#954)**: nueva tabla `device_seen` que registra la primera y la última vez que el server vio online a cada MAC (todas las fuentes, no solo wireless). El detalle del dispositivo muestra ambas y la tabla de clientes gana columnas ordenables en pantallas xl+. El server manda epochs y la app formatea el relativo con el locale activo.
+
+### Fixed
+
+- **Switches SNMP sin clientes pese a tener el FDB poblado (#928)**: dos causas encadenadas, confirmadas con el snmpwalk del reporter. (1) El fallback a la tabla Q-BRIDGE solo se probaba cuando el walk dot1d devolvía cero PDUs crudos; si devolvía datos no utilizables, nunca se intentaba (#948). (2) Los TP-Link Omada (SG3428X-M2, SG3210X-M2) indexan la tabla dot1d por `<vlan>.<mac>` (7 octetos) en vez de la MAC desnuda que manda RFC 1493, y el parser exigía exactamente 6: descartaba todas las entradas (#950). La línea de log del FDB muestra además los PDUs crudos de cada walk para acortar diagnósticos futuros.
+- **"First seen" nunca se poblaba fuera del demo (#954)**: el campo existía en el contrato pero ninguna fuente live lo rellenaba; ahora sale de `device_seen`.
+- **Slugs autogenerados invisibles en la UI (#951)**: los slugs (router-lan, gateway...) se generan en el alta y salían en logs sin aparecer en la web. Las líneas de log del poller SNMP y de "router inalcanzable" usan ahora el nombre del dispositivo (con el slug entre paréntesis) y la tarjeta de información del detalle muestra la fila ID.
+
+### Notes
+
+- Agente 3.0.5: la serie WAN/VLANs toca el agente (política de uplink); el resto de cambios son de servidor y web.
+- El selector de columnas visibles de la tabla de clientes (tercera sugerencia de #954) queda como follow-up en #958.
+- Gracias a crowedavid por el reporte detallado de #928, las pruebas con sus TP-Link Omada y las sugerencias de #954, y a borky por la serie WAN/VLANs.
+
 ## [2.28.40] - 2026-09-30
 
 ### Added
