@@ -337,7 +337,10 @@
       "hypervisor": "Hipervisor",
       "hypervisorTip": "Host con CTs/VMs anidados tras su bridge virtual",
       "managedSwitch": "Switch gestionado",
-      "managedSwitchTip": "Switch identificado vía LLDP"
+      "managedSwitchTip": "Switch identificado vía LLDP",
+      "apTip": "Punto de acceso gestionado, reportado por su controlador",
+      "vm": "VM",
+      "vmTip": "Máquina virtual en {{host}}"
     },
     "bandAll": "Todas",
     "changeView": "Cambiar vista",
@@ -1136,6 +1139,11 @@
     "ring": {
       "overflowAria": "{{count}} clientes más en {{router}}",
       "overflowTitle": "{{count}} clientes más en {{router}}"
+    },
+    "vm": {
+      "pill": "VM",
+      "note": "Máquina virtual en el hipervisor · su tráfico viaja por el cable del host",
+      "noteIn": "Máquina virtual en {{host}} · bridge virtual ({{port}}) · tráfico por el cable del host"
     }
   },
   "settings": {
@@ -1633,7 +1641,10 @@
       "add": "Añadir instancia",
       "delete": "Quitar",
       "instanceName": "Nombre (p. ej. Casa)",
-      "instanceId": "Identificador (slug, no editable luego)"
+      "instanceId": "Identificador (slug, no editable luego)",
+      "test": "Probar",
+      "testOk": "Conectado: Proxmox {{version}} · {{nodes}} nodo(s), {{vms}} VM(s), {{cts}} CT(s)",
+      "testLimited": "El token autentica pero no ve ningún invitado: Proxmox devuelve las listas vacías cuando al token le faltan permisos de auditoría. Dale PVEAuditor en \"/\" — en el host Proxmox: pveum acl modify / --tokens 'USUARIO@REALM!TOKEN' --roles PVEAuditor. Un token con separación de privilegios necesita el permiso él mismo, no basta con el de su usuario."
     },
     "sections": {
       "personalization": "Configuración",
