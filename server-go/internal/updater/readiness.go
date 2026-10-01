@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,15 @@ const (
 	// readinessNetTimeout: tope para el check de red hacia GitHub.
 	readinessNetTimeout = 5 * time.Second
 )
+
+// probeURL es el endpoint del check de conectividad. Es github.com (HTML) y
+// NO api.github.com a propósito (issue #956): la API anónima tiene cuota de
+// 60 req/h por IP y el readiness se recomputa cada readinessTTL mientras la
+// UI de actualización está abierta, lo que agotaba la cuota y luego impedía
+// al apply descargar los metadatos de la release. La web pública no cuenta
+// contra esa cuota y un 4xx también prueba conectividad.
+// Var de paquete para apuntarlo al httptest de los tests.
+var probeURL = "https://github.com"
 
 // minDiskFreeBytes es el espacio libre mínimo exigido en repoRoot (descarga
 // del binario de CI ~40 MB + backup del binario actual + margen de build).
@@ -111,6 +121,15 @@ func (u *Updater) checkGit() CheckResult {
 	if u.mode != "rolling" {
 		return CheckResult{OK: true, Detail: "no aplica (layout estable)"}
 	}
+	// Rolling sin clone (.git ausente, p.ej. el layout estable actualizado
+	// in place con deploy/update.sh copiado): update.sh resuelve el SHA de
+	// main vía ls-remote y NO hace git reset --hard (issue #897), así que no
+	// hay working tree que proteger. Sin este skip el check fallaba con "no
+	// se pudo leer el estado de git" y bloqueaba el apply para siempre
+	// (issue #955).
+	if !fileExists(filepath.Join(u.repoRoot, ".git")) {
+		return CheckResult{OK: true, Detail: "no aplica (sin clone git)"}
+	}
 	out, err := exec.Command("git", "-C", u.repoRoot, "status", "--porcelain", "--untracked-files=no").Output()
 	if err != nil {
 		return CheckResult{OK: false, Detail: "no se pudo leer el estado de git"}
@@ -122,11 +141,12 @@ func (u *Updater) checkGit() CheckResult {
 }
 
 // checkNetwork comprueba que GitHub es alcanzable (cualquier respuesta HTTP
-// cuenta: un 4xx también significa que hay conectividad).
+// cuenta: un 4xx también significa que hay conectividad). Usa probeURL (web
+// pública, sin cuota de API; #956).
 func (u *Updater) checkNetwork() CheckResult {
 	ctx, cancel := context.WithTimeout(context.Background(), readinessNetTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", APIBase, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", probeURL, nil)
 	if err != nil {
 		return CheckResult{OK: false, Detail: "URL de API inválida"}
 	}
