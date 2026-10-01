@@ -22,8 +22,6 @@ import (
 	"time"
 
 	"github.com/gnacho/netpulse/agent/probe"
-	"github.com/gnacho/netpulse/server-go/internal/adapters"
-	"github.com/gnacho/netpulse/server-go/internal/db"
 )
 
 func spkiOf(t *testing.T, srv *httptest.Server) string {
@@ -183,18 +181,6 @@ func TestPanelTargetDoesNotFollowRedirects(t *testing.T) {
 	if plainHits.Load() != 0 {
 		t.Fatal("the redirect was followed: the token went to a plain-http address")
 	}
-}
-
-// panelTestServer is the minimum netgripPanelOf and applyViaNetGrip read: a
-// database and the agent registry.
-func panelTestServer(t *testing.T) *server {
-	t.Helper()
-	d, err := db.Open(t.TempDir())
-	if err != nil {
-		t.Fatalf("db: %v", err)
-	}
-	t.Cleanup(func() { _ = d.Close() })
-	return &server{db: d, agents: adapters.NewAgentRegistry(90 * time.Second)}
 }
 
 func addPanelRouter(t *testing.T, s *server, id, name, host string) {
