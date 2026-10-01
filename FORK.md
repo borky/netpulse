@@ -68,20 +68,33 @@ below are the second line for the project's own domain.
 
 ## What is here, and where it should end up
 
-Nothing in this fork has been offered upstream yet. Grouped for review, largest
-coherent feature first:
+Upstream took most of this fork in 2.28.40 - 2.28.42 (sync of 2026-10-01),
+as squashed integrations whose messages name the fork commits they carry:
 
-| area | commits | offer upstream? |
-|---|---|---|
-| UniFi controller integration | 13 | yes — generic |
-| Proxmox integration | 7 | yes — generic |
-| Routers / topology / devices | 11 | yes, mostly bug fixes |
-| WAN, alerts, VLANs, agents | ~8 | yes |
-| UI, i18n, comments | ~12 | yes, where not cosmetic |
-| HTTPS with a private CA (see below) | ~12 | yes — opt-in, defaults unchanged |
+| area | upstream |
+|---|---|
+| Proxmox integration | #940 |
+| UI, i18n | #941 |
+| HTTPS with a private CA (see below) | #942 |
+| Routers / topology / devices | 198e423, 8ac8293 |
+| WAN, alerts, VLANs, agents | #946 |
 
-Check each against `upstream/main` first: upstream moves quickly (2.28.x) and
-some of these may already be solved there.
+Upstream kept the Spanish comments those commits were written with, so the
+fork's English translations stay only on code that is still fork-only;
+translating upstream's lines again would conflict on every sync.
+
+Still only here, and worth offering:
+
+| area | commits |
+|---|---|
+| UniFi controller integration | 14 |
+| DHCP static reservations name fixed-address clients | 2 |
+| mDNS host records; hwmon temperature fallback; camera and appliance vendors | 3 |
+
+When upstream takes a squashed integration, check the commits it names for
+hunks in files upstream does not have: dropping such a commit drops those
+too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
+(restored in "keep a container on its host only once it was placed there").
 
 ## Fork-only patches
 
@@ -305,8 +318,8 @@ Upstream (#851) now derives a pin for reinstalls itself
 (`reinstall.ServerFP`, the leaf key it sees on its own public URL), and
 `reinstall.Script` takes it as an argument. The fork's `reinstall.Trust`, when
 HTTPS with the private CA is on, overrides both the URL and that pin, and adds
-the root. Token rotation keeps the fork's version, which keeps every line of
-the env file rather than only the pin. The port-state line carries both
+the root. Token rotation is upstream's version (#851), which keeps the rest of
+the env file too; the fork's test that runs it against a real file stays. The port-state line carries both
 upstream's DSA flag (#847) and the fork's type and conduit fields.
 
 The agent half needs an agent release before NetGrip's upstream can use it;
