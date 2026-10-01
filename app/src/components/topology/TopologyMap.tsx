@@ -1630,18 +1630,6 @@ function LabelText({
 // Nodo de distribución inferido (círculo dashed, sin IP)
 // ---------------------------------------------------------------------------
 
-/**
- * Where a managed box came from, for the pill on the node and in the
- * tooltip: LLDP if the router saw it announce itself, otherwise the
- * integration that reported it. It used to say "LLDP" on all of them,
- * including APs only the UniFi controller knows. "" = unknown provenance,
- * and then no pill at all.
- */
-function distBadge(n: DistributionNode): string {
-  if (n.lldp) return 'LLDP'
-  return n.source ? n.source.toUpperCase() : ''
-}
-
 /** Ancho de la pastilla: crece con el texto ("LLDP", "UNIFI", "PROXMOX"). */
 function badgeWidth(label: string): number {
   return Math.max(22, label.length * 4.6 + 8)
