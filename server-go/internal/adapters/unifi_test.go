@@ -185,6 +185,26 @@ func TestApplyUniFiInfraLeavesContainersOnTheirHypervisor(t *testing.T) {
 	}
 }
 
+// A container the PVE seal could NOT place (host unidentified) still takes
+// the switch placement: there is no nesting to protect, and a port is
+// better than falling through to the gateway with no evidence at all.
+func TestApplyUniFiInfraPlacesAnOrphanContainer(t *testing.T) {
+	devices := []Device{{MAC: "02:00:00:00:00:01", Name: "storage", Infra: "ct"}}
+	applyUniFiInfra(devices, nil, testInventory(), "gateway")
+	if devices[0].AttachTo == "" || devices[0].Port != "lan5" {
+		t.Fatalf("an orphan container keeps the switch port: %+v", devices[0])
+	}
+}
+
+// A placed virtual machine, like a placed container, stays on its host.
+func TestApplyUniFiInfraLeavesAPlacedVMOnItsHost(t *testing.T) {
+	devices := []Device{{MAC: "02:00:00:00:00:01", Name: "vm", Infra: "vm", AttachTo: "host-1"}}
+	applyUniFiInfra(devices, nil, testInventory(), "gateway")
+	if devices[0].AttachTo != "host-1" {
+		t.Fatalf("a placed VM was re-parented: %+v", devices[0])
+	}
+}
+
 // The negotiated speed of a switch port is real measured data; the links
 // table used to print "1 Gbps" on every row for want of it.
 func TestApplyUniFiInfraCarriesThePortSpeed(t *testing.T) {
