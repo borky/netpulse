@@ -5,6 +5,19 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.42] - 2026-10-01
+
+### Fixed
+
+- **El botón de actualizar quedaba bloqueado en instalaciones sin clone git (#955)**: la comprobación «working tree limpio» se ejecutaba en cualquier instalación en modo rolling (detectado por la presencia de `deploy/update.sh`) aunque el directorio no fuera un clone git; fallaba con «no se pudo leer el estado de git» y el botón de aplicar quedaba bloqueado para siempre, pese a que `update.sh` sí soporta ese layout. La comprobación se omite cuando no hay `.git`, igual que en el layout estable.
+- **El chequeo de conectividad agotaba la cuota anónima de la API de GitHub (#956)**: el sondeo llamaba a `api.github.com` en cada cómputo (caché de solo 30 s); con la interfaz de actualización abierta podía superar las 60 peticiones/hora del acceso anónimo y la aplicación de la actualización fallaba después con el error de límite de peticiones. El sondeo usa ahora la web pública de GitHub, que prueba la conectividad igual y no consume cuota de API.
+- **Tarjeta «Protegidos por AdGuard» en rojo al 100 % (#959)**: la barra aplicaba los umbrales de las métricas de carga (rojo por encima del 90 %) a una métrica de cobertura, donde el 100 % es el mejor caso. Rediseño: con cobertura total muestra un escudo verde grande con el porcentaje; con cobertura parcial muestra el contador de protegidos y la tarjeta es clicable, filtrando la tabla para ver solo los clientes sin proteger.
+- **Clientes SNMP duplicados por las mayúsculas de la MAC (#960)**: el parser FDB de SNMP emitía las MACs en minúsculas mientras el resto de fuentes (sondeo del agente, wireless, DHCP, atributos) usan mayúsculas, así que el mismo dispositivo aparecía dos veces en la lista de clientes; también se rompía la exclusión de la MAC del puente en el uplink. El parser emite ahora la forma canónica en mayúsculas.
+
+### Notes
+
+- Sin cambios en el agente (sigue en la 3.0.5).
+
 ## [2.28.41] - 2026-09-30
 
 ### Added
