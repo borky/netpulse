@@ -5,6 +5,41 @@ Todos los cambios notables de NetPulse se documentan en este fichero.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/),
 y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.28.43] - 2026-10-01
+
+### Added
+
+- **Hub de Servicios e Integraciones en Ajustes (#964, #968, #977, #996)**: AdGuard, WireGuard y OpenVPN como servicios de red y MQTT y Proxmox como integraciones, todos con toggles de activación en el servidor (efecto inmediato, sin reinicio) e icono de configuración que abre diálogos grandes. ntfy y Telegram viven en Notificaciones. Detección de AdGuard (sondea gateway y flota, #964) y descubrimiento de Proxmox en la subred en dos fases (TCP masivo y confirmación TLS en serie, porque pveproxy limita las conexiones simultáneas por IP, #967).
+- **Puerto HTTPS configurable (#978)**: se cambia en caliente sin reiniciar, con rollback si el bind falla; por defecto 443 (`NETPULSE_TLS_PORT` sigue teniendo prioridad).
+- **Proveedor del test de velocidad configurable (#976, #1001)**: Ookla (por defecto), Cloudflare, LibreSpeed o un endpoint personalizado con su propia URL; las opciones del test periódico se editan en su diálogo (#997).
+- **Clientes: filtros de flota y conexión como desplegables multi-selección (#970, #989)** con el mismo estilo que el filtro de tipo, selector de columnas visibles de la tabla (#958, la de nombre siempre visible y el espacio liberado se reparte a partes iguales) y banda 6 GHz solo cuando la red la tiene (#991).
+- **Selector de idioma de las notificaciones y consolidación de canales (#977, #998)**: push integrado en la tarjeta de notificaciones visuales y bloqueado sin contexto seguro (HTTPS), con el motivo visible al pasar por encima del check.
+
+### Changed
+
+- **Resumen rediseñado (#965, #979, #982, #983, #992)**: hero compacto a dos mitades (saludo con latencia y clientes / anillo de salud, todo centrado), tarjeta de alertas al lado con acciones solo icono y estado vacío amable, tráfico WAN a todo lo ancho con la gráfica del histórico de velocidad medida y la línea del último test (% del plan, bajada/subida, ping, antigüedad, servidor) sin botón de ejecutar, "Tu flota" como título de la sección de routers y AdGuard antes que WireGuard.
+- **Informes reescritos para entenderse (#973, #993)**: cabecera que explica qué se mide y en qué ventana, tiempo sin datos en horas y minutos, tres tarjetas resumen y barra segmentada estilo Uptime Kuma con tooltip de fecha y hora. Los routers sin cobertura suficiente muestran «sin datos suficientes» en vez de cifras inventadas.
+- **Dieta de textos en Ajustes (#1002, #995, #1000, #999)**: los discursos largos (modos de AdGuard, creación del token de Proxmox, canales urgentes, topic de ntfy...) pasan a tooltips de información o a la página de Ayuda; la tarjeta HTTPS queda en toggle + puerto; dispositivos de confianza y tokens Bearer quedan en añadir + listado; tokens de API movidos a Administración; historial de actualizaciones movido a Acerca de, bajo Sistema. Sin párrafos en la UI.
+- **Navegación y tema (#974, #980, #981)**: Ajustes sobre Ayuda, toggle claro/oscuro en la cabecera junto a refrescar (y funcionando de verdad: la paleta inline ganaba a la clase CSS), indicador «En vivo» al pie del menú junto al de plegar, y diálogo de actualización rediseñado estilo Pulse (tarjeta de versión, prerrequisitos, aviso ámbar, progreso con pasos).
+- **Detalle de cliente aligerado (#985, #984)**: sin tráfico por cliente ni datos de presencia, botón de editar a la derecha y grid de datos sin párrafos; eliminado el texto largo de NetGrip/agente nativo.
+- **Topología (#986, #990)**: colores de banda wifi claramente diferenciados (2.4 naranja, 5 cian, 6 fucsia) y botón de etiquetas junto al de etiquetar dispositivos.
+- **Labs en rojo (#975)**: el check de Labs y sus servicios (orquestación, canales, actualizaciones) se acentúan en rojo porque escriben en los routers; nuevo toggle maestro «Limitar historial» (activado por defecto) con diálogo de retención de presencia e intervalo de itinerancia.
+
+### Fixed
+
+- **«Marcar todo como leído» no limpiaba las alertas (#971)**: nuevo endpoint `POST /api/alerts/clear` que vacía el feed de verdad y sobrevive a recargas. La alerta de caída de agente es ahora volátil por router (no se acumula en el log y desaparece al recuperar) y MarkRead ya no reactiva alertas visibles como no leídas (#966).
+- **Disponibilidad de Informes inventada (#987)**: la fórmula asumía sondeo de 5 s y marcaba como «caído» el tiempo entre muestras (hasta 17 días fantasma en routers online). Se calcula ahora con la cobertura real de buckets de 5 minutos y el día en curso se mide con los datos crudos.
+- **El toggle de tema no cambiaba nada (#980)**: el arranque aplicaba la paleta como variables CSS inline que ganaban a la clase del tema.
+- **Los desplegables de filtros de Clientes no abrían (#1006)**: el trigger personalizado no reenviaba el ref a Radix.
+- **Routers renombrados aparecían como `router-xx` (#988)**: Orchestration e Informes muestran el nombre dado por el usuario con el slug entre paréntesis cuando difieren (reporte de gnulan).
+- **El fondo se desplazaba al abrir diálogos**: se reserva la canal del scrollbar (`scrollbar-gutter: stable`) para que el ancho no cambie.
+- **Diálogos con fondo blanco en tema oscuro y datos por defecto al abrir**: el DialogContent usaba una clase stock ajena a los tokens del tema, y el diálogo de AdGuard mostraba el formulario vacío mientras cargaba la config real.
+- **Umbral de señal débil duplicado (#1003)**: el chip y el filtro de Clientes usaban -70 dBm fijos; ahora siguen el ajuste global (reporte de crowedavid).
+
+### Notes
+
+- Sin cambios en el agente (sigue en la 3.0.5).
+
 ## [2.28.42] - 2026-10-01
 
 ### Fixed
