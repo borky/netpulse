@@ -4,8 +4,6 @@ import { Link } from 'react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   BadgeCheck,
-  BellOff,
-  BellRing,
   Check,
   ChevronDown,
   CircleAlert,
@@ -35,6 +33,7 @@ import {
    RotateCw,
   Router as RouterIcon,
    Server,
+   Settings2,
     Shield,
     ShieldCheck,
    Star,
@@ -61,12 +60,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
+import { InfoTip } from '@/components/InfoTip'
 import { useNetPulse } from '@/data/DataProvider'
 import { fmtEs } from '@/data/mock'
 import { useAuth } from '@/data/AuthContext'
 import { getVapidKey, postPushSubscribe, postPushUnsubscribe, pushContext, urlBase64ToUint8Array } from '@/data/push'
 import { useServicesVisibility } from '@/hooks/useServicesVisibility'
 import type { ServicesVisibility } from '@/hooks/useServicesVisibility'
+import { useIntegrations } from '@/hooks/useIntegrations'
+import type { IntegrationsState } from '@/hooks/useIntegrations'
 import { relTimeFromTs } from '@/i18n'
 import { cn, copyToClipboard, exitDemo } from '@/lib/utils'
 import { useTempUnit } from '@/lib/temperature'
@@ -99,7 +101,8 @@ function AlertsLangControl({ onSaved }: { onSaved: () => void }) {
         if (!res.ok) return
         const body = (await res.json()) as { lang: string; supported: string[] }
         setLang(body.lang)
-        setSupported(body.supported)
+        // EN primero: es el idioma por defecto del servidor (#889).
+        setSupported([...body.supported].sort((a, b) => (a === 'en' ? -1 : b === 'en' ? 1 : a.localeCompare(b))))
       } catch {
         /* se queda el estado vacío; el select queda deshabilitado */
       }
@@ -121,25 +124,23 @@ function AlertsLangControl({ onSaved }: { onSaved: () => void }) {
     }
   }
 
+  // #998: una sola etiqueta (el título de la subsección, con la explicación
+  // en el (i)); el select ya no repite un label que decía lo mismo.
   return (
-    <div className="flex items-center gap-3">
-      <label className="text-sm text-text-secondary" htmlFor="alerts-lang">
-        {t('settings.alertsLang.label')}
-      </label>
-      <select
-        id="alerts-lang"
-        value={lang}
-        disabled={saving || supported.length === 0}
-        onChange={(e) => void change(e.target.value)}
-        className="rounded-lg border border-border bg-elevated px-2.5 py-1.5 text-sm text-text-primary disabled:opacity-50"
-      >
-        {supported.map((l) => (
-          <option key={l} value={l}>
-            {l}
-          </option>
-        ))}
-      </select>
-    </div>
+    <select
+      id="alerts-lang"
+      aria-label={t('settings.alertsLang.title')}
+      value={lang}
+      disabled={saving || supported.length === 0}
+      onChange={(e) => void change(e.target.value)}
+      className="rounded-lg border border-border bg-elevated px-2.5 py-1.5 text-sm text-text-primary disabled:opacity-50"
+    >
+      {supported.map((l) => (
+        <option key={l} value={l}>
+          {l}
+        </option>
+      ))}
+    </select>
   )
 }
 
@@ -236,19 +237,21 @@ interface SwitchRowProps {
   onCheckedChange: (v: boolean) => void
   trailing?: React.ReactNode
   disabled?: boolean
+  /** Acento rojo: la función escribe en los routers (Labs). */
+  danger?: boolean
 }
 
-function SwitchRow({ icon: Icon, label, caption, checked, onCheckedChange, trailing, disabled = false }: SwitchRowProps) {
+function SwitchRow({ icon: Icon, label, caption, checked, onCheckedChange, trailing, disabled = false, danger = false }: SwitchRowProps) {
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
       <div className="flex min-w-0 items-center gap-3">
         {Icon && (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-elevated text-text-secondary">
+          <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', danger ? 'bg-danger/10 text-danger' : 'bg-elevated text-text-secondary')}>
             <Icon className="h-4 w-4" strokeWidth={1.75} />
           </span>
         )}
         <div className="min-w-0">
-          <div className="text-sm font-medium text-text-primary">{label}</div>
+          <div className={cn('text-sm font-medium', danger ? 'text-danger' : 'text-text-primary')}>{label}</div>
           {caption && <div className="text-caption text-text-muted">{caption}</div>}
         </div>
       </div>
@@ -692,6 +695,7 @@ function RoutersManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
       reduce={reduce}
       headerSlot={
         <div className="flex items-center gap-2">
+          <InfoTip text={t('settings.routers.hint')} />
           <button
             type="button"
             onClick={() => void discover()}
@@ -970,7 +974,6 @@ function RoutersManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
           </button>
         </div>
         {error && <p className="mt-2 text-caption text-danger">{error}</p>}
-        <p className="mt-3 text-caption leading-relaxed text-text-muted">{t('settings.routers.hint')}</p>
         </form>
         )}
       </div>
@@ -1024,8 +1027,9 @@ function RoutersManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
                 />
               </div>
               <div>
-                <label htmlFor="temp-threshold" className="mb-1 block text-caption font-medium uppercase tracking-[0.06em] text-text-muted">
+                <label htmlFor="temp-threshold" className="mb-1 flex items-center gap-1 text-caption font-medium uppercase tracking-[0.06em] text-text-muted">
                   {t('settings.routers.tempThreshold')}
+                  <InfoTip text={t('settings.routers.tempThresholdHint')} />
                 </label>
                 <input
                   id="temp-threshold"
@@ -1038,7 +1042,6 @@ function RoutersManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
                   aria-label={t('settings.routers.tempThreshold')}
                   className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
                 />
-                <p className="mt-1 text-caption leading-relaxed text-text-muted">{t('settings.routers.tempThresholdHint')}</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <SegmentedControl
@@ -1063,9 +1066,9 @@ function RoutersManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
                 {editType === 'managed-switch' && (
                   <label className="flex cursor-pointer items-start gap-2 text-sm text-text-secondary">
                     <Switch checked={editConsolePolling} onCheckedChange={setEditConsolePolling} className="mt-0.5" />
-                    <span>
+                    <span className="flex items-center gap-1">
                       {t('settings.routers.consolePolling')}
-                      <span className="mt-0.5 block text-caption leading-relaxed text-text-muted">{t('settings.routers.consolePollingHint')}</span>
+                      <InfoTip text={t('settings.routers.consolePollingHint')} />
                     </span>
                   </label>
                 )}
@@ -1182,8 +1185,8 @@ function RoutersManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-text-muted" strokeWidth={1.75} />
           <span className="text-sm font-medium text-text-primary">{t('settings.routers.sshKeyTitle')}</span>
+          <InfoTip text={t('settings.routers.sshKeyCaption')} />
         </div>
-        <p className="mt-1 text-caption leading-relaxed text-text-muted">{t('settings.routers.sshKeyCaption')}</p>
         {pubkey && (
           <div className="mt-2.5 flex items-start gap-2">
             <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-elevated px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
@@ -1549,7 +1552,12 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [disabling, setDisabling] = useState(false)
+  const [detecting, setDetecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [detectNote, setDetectNote] = useState<string | null>(null)
+  // Sin vista hasta que llega la config real: en diálogo, renderizar antes
+  // mostraba el form con valores por defecto como si fuera la config.
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -1572,6 +1580,8 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
         setPassSet(json.passSet)
       } catch {
         if (!disposed && gwIp) setHost((h) => h || gwIp)
+      } finally {
+        if (!disposed) setLoaded(true)
       }
     })()
     return () => {
@@ -1580,6 +1590,42 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
   }, [gwIp])
 
   const displayHost = mode === 'glinet' ? host : `${host}:${port}`
+
+  // Detectar (#964): POST /api/config/adguard/detect sondea la presencia de
+  // AdGuard Home (gateway primero, luego flota) y pre-rellena mode/host/port.
+  // La password la confirma el usuario después (el detect no toca credenciales).
+  // OJO: el nombre NO puede empezar por "use" (eslint rules-of-hooks lo
+  // tomaría por un hook).
+  const applyDetected = async () => {
+    if (detecting) return
+    setDetecting(true)
+    setError(null)
+    setDetectNote(null)
+    try {
+      const res = await fetch('/api/config/adguard/detect', { method: 'POST' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = (await res.json()) as {
+        found: boolean
+        mode?: 'glinet' | 'standard'
+        host?: string
+        port?: number
+        source?: string
+      }
+      if (!json.found || !json.host) {
+        setDetectNote(t('settings.adguard.detectNotFound'))
+        return
+      }
+      setMode(json.mode === 'standard' ? 'standard' : 'glinet')
+      setHost(json.host)
+      setPort(String(json.port || 3000))
+      setEditing(true)
+      setDetectNote(t('settings.adguard.detectFound', { host: json.host }))
+    } catch {
+      setError(t('settings.adguard.errorGeneric'))
+    } finally {
+      setDetecting(false)
+    }
+  }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1641,9 +1687,16 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
 
   // SPEC-65 D65-7c: configurado y sin editar → vista compacta (icono + host +
   // chip ok + Editar). Sin configurar → form directo como antes.
-  if (passSet && !editing) {
+  if (!loaded) {
     return (
       <Card title={t('settings.adguard.title')} caption={t('settings.adguard.caption')} index={5} reduce={reduce}>
+        <p className="py-3 text-caption text-text-muted">{t('common.loading')}</p>
+      </Card>
+    )
+  }
+  if (passSet && !editing) {
+    return (
+      <Card title={t('settings.adguard.title')} caption={t('settings.adguard.caption')} index={5} reduce={reduce} headerSlot={<InfoTip text={t('settings.adguard.hint')} />}>
         <div className="flex items-center gap-3 rounded-xl border border-border bg-elevated px-3.5 py-2.5">
           <ShieldCheck className="h-4 w-4 shrink-0 text-text-muted" strokeWidth={1.75} />
           <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-text-primary">{displayHost}</span>
@@ -1671,13 +1724,12 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
           </button>
         </div>
         {error && <p className="mt-2 text-caption text-danger">{error}</p>}
-        <p className="mt-3 text-caption leading-relaxed text-text-muted">{t('settings.adguard.hint')}</p>
       </Card>
     )
   }
 
   return (
-    <Card title={t('settings.adguard.title')} caption={t('settings.adguard.caption')} index={5} reduce={reduce}>
+    <Card title={t('settings.adguard.title')} caption={t('settings.adguard.caption')} index={5} reduce={reduce} headerSlot={<InfoTip text={t('settings.adguard.hint')} />}>
       <form onSubmit={(e) => void save(e)}>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
           <select
@@ -1734,6 +1786,15 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
             {passSet ? t('settings.adguard.configured') : t('settings.adguard.notConfigured')}
           </span>
           <button
+            type="button"
+            onClick={() => void applyDetected()}
+            disabled={detecting || saving}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary transition-colors duration-150 hover:border-accent/40 hover:text-accent disabled:opacity-40"
+          >
+            {detecting ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <Radar className="h-4 w-4" strokeWidth={1.75} />}
+            {detecting ? t('settings.adguard.detecting') : t('settings.adguard.detect')}
+          </button>
+          <button
             type="submit"
             disabled={saving || !host.trim() || (mode === 'standard' && (!port || Number.isNaN(parseInt(port, 10)))) || (!passSet && !password)}
             className="ml-auto flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-canvas transition-opacity duration-150 hover:opacity-90 disabled:opacity-40"
@@ -1755,7 +1816,7 @@ function AdGuardManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
           )}
         </div>
         {error && <p className="mt-2 text-caption text-danger">{error}</p>}
-        <p className="mt-3 text-caption leading-relaxed text-text-muted">{t('settings.adguard.hint')}</p>
+        {detectNote && <p className="mt-2 text-caption text-text-muted">{detectNote}</p>}
       </form>
     </Card>
   )
@@ -1887,7 +1948,7 @@ function ProxmoxManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
   const empty = { id: '', name: '', url: '', tokenId: '', secret: '' }
 
   return (
-    <Card title={t('settings.proxmox.title')} caption={t('settings.proxmox.caption')} index={5} reduce={reduce}>
+    <Card title={t('settings.proxmox.title')} caption={t('settings.proxmox.caption')} index={5} reduce={reduce} headerSlot={<InfoTip text={t('settings.proxmox.hintShort')} />}>
       <div className="space-y-2.5">
         {instances.map((inst) => (
           <div key={inst.id} className="flex items-center gap-3 rounded-xl border border-border bg-elevated px-3.5 py-2.5">
@@ -2032,7 +2093,6 @@ function ProxmoxManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
         )}
       </div>
       {error && !editing && <p className="mt-2 text-caption text-danger">{error}</p>}
-      <p className="mt-3 text-caption leading-relaxed text-text-muted">{t('settings.proxmox.hint')}</p>
     </Card>
   )
 }
@@ -2204,7 +2264,10 @@ function PresenceRetentionRow() {
 
   return (
     <div>
-      <div className="text-sm font-medium text-text-primary">{t('settings.data.presenceRetention')}</div>
+      <div className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+        {t('settings.data.presenceRetention')}
+        <InfoTip text={t('settings.data.presenceRetentionNote')} />
+      </div>
       <div className="mt-2 flex items-center gap-2">
         <input
           type="number"
@@ -2226,7 +2289,6 @@ function PresenceRetentionRow() {
           {savedTick ? '✓' : t('common.save')}
         </button>
       </div>
-      <p className="mt-2 text-caption text-text-muted">{t('settings.data.presenceRetentionNote')}</p>
     </div>
   )
 }
@@ -2281,7 +2343,10 @@ function RoamCollectRow() {
 
   return (
     <div>
-      <div className="text-sm font-medium text-text-primary">{t('settings.data.roamCollect')}</div>
+      <div className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+        {t('settings.data.roamCollect')}
+        <InfoTip text={t('settings.data.roamCollectNote')} />
+      </div>
       <div className="mt-2 flex items-center gap-2">
         <input
           type="number"
@@ -2303,7 +2368,86 @@ function RoamCollectRow() {
           {savedTick ? '✓' : t('common.save')}
         </button>
       </div>
-      <p className="mt-2 text-caption text-text-muted">{t('settings.data.roamCollectNote')}</p>
+    </div>
+  )
+}
+
+// LimitHistoryRow (#975): interruptor maestro «Limitar historial» (ON por
+// defecto; OFF = sin poda, retención ilimitada). El icono Settings2 abre un
+// Dialog con los dos ajustes finos: retención de presencia (#771) e
+// intervalo de ingesta de itinerancia (#907, independiente del límite).
+function LimitHistoryRow({ onSaved }: { onSaved: () => void }) {
+  const { t } = useTranslation()
+  const { isDemo } = useNetPulse()
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (isDemo) {
+      setEnabled(localStorage.getItem('netpulse.history.limit') !== '0')
+      return
+    }
+    let cancelled = false
+    fetch('/api/settings/history-limit')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j && typeof j.enabled === 'boolean') setEnabled(j.enabled)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isDemo])
+
+  if (enabled === null) return null
+
+  const toggle = (v: boolean) => {
+    setEnabled(v)
+    onSaved()
+    if (isDemo) {
+      localStorage.setItem('netpulse.history.limit', v ? '1' : '0')
+      return
+    }
+    void fetch('/api/settings/history-limit', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: v }),
+    }).catch(() => {})
+  }
+
+  return (
+    <div>
+      <SwitchRow
+        label={t('settings.data.limitHistory')}
+        caption={t('settings.data.limitHistoryCaption')}
+        checked={enabled}
+        onCheckedChange={toggle}
+        trailing={
+          <span className="flex items-center gap-1">
+            <InfoTip text={t('settings.data.limitHistoryHint')} />
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              aria-label={t('settings.data.limitHistoryDialog')}
+              title={t('settings.data.limitHistoryDialog')}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-text-muted transition-colors duration-150 hover:border-accent/40 hover:text-accent"
+            >
+              <Settings2 className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </span>
+        }
+      />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{t('settings.data.limitHistoryDialog')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <PresenceRetentionRow />
+            <RoamCollectRow />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -2617,7 +2761,10 @@ function WanSpeedCard({ onSaved, disabled = false }: { onSaved: () => void; disa
   return (
     <div className="space-y-3">
       <div>
-        <div className="text-sm font-medium text-text-primary">{t('settings.wanSpeed.title')}</div>
+        <div className="flex items-center gap-1 text-sm font-medium text-text-primary">
+          {t('settings.wanSpeed.title')}
+          <InfoTip text={t('settings.wanSpeed.hint')} />
+        </div>
         <div className="text-caption text-text-muted">{t('settings.wanSpeed.caption')}</div>
       </div>
 
@@ -2672,8 +2819,6 @@ function WanSpeedCard({ onSaved, disabled = false }: { onSaved: () => void; disa
           </div>
         )}
       </div>
-
-      <p className="text-caption text-text-muted">{t('settings.wanSpeed.hint')}</p>
 
       {/* Barra de fases cuando corre el test */}
       {!disabled && testing && (
@@ -2759,6 +2904,9 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
   const [intervalHours, setIntervalHours] = useState(12)
   const [alertPct, setAlertPct] = useState(50)
   const [serverUrl, setServerUrl] = useState('')
+  // Proveedor del test (#976): ookla/cloudflare/librespeed + custom (#1001,
+  // endpoint HTTP libre cuya URL completa escribe el usuario).
+  const [provider, setProvider] = useState<'ookla' | 'cloudflare' | 'librespeed' | 'custom'>('ookla')
   const [scheduleKind, setScheduleKind] = useState<'interval' | 'weekly' | 'monthly'>('interval')
   const [dayOfWeek, setDayOfWeek] = useState(1)
   const [dayOfMonth, setDayOfMonth] = useState(1)
@@ -2767,6 +2915,7 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [cfgOpen, setCfgOpen] = useState(false)
   const loaded = useRef(false)
 
   useEffect(() => {
@@ -2780,6 +2929,10 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
         if (typeof d.intervalHours === 'number') setIntervalHours(d.intervalHours)
         if (typeof d.alertPct === 'number') setAlertPct(d.alertPct)
         if (typeof d.serverUrl === 'string') setServerUrl(d.serverUrl)
+        // Proveedor del test (#976): ookla/cloudflare/librespeed/custom.
+        if (d.provider === 'ookla' || d.provider === 'cloudflare' || d.provider === 'librespeed' || d.provider === 'custom') {
+          setProvider(d.provider)
+        }
         // Migración visual de los "semanal/mensual" históricos (#744):
         // 168h/720h sin scheduleKind pasan a weekly/monthly con día y hora.
         const kind = typeof d.scheduleKind === 'string' ? d.scheduleKind : ''
@@ -2808,19 +2961,51 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
       enabled,
       intervalHours: scheduleKind === 'interval' ? intervalHours : 12,
       serverUrl,
+      provider,
       alertPct,
       scheduleKind,
       ...(scheduleKind === 'weekly' ? { dayOfWeek } : {}),
       ...(scheduleKind === 'monthly' ? { dayOfMonth } : {}),
       ...(scheduleKind !== 'interval' ? { time: schedTime } : {}),
     }),
-    [enabled, intervalHours, serverUrl, alertPct, scheduleKind, dayOfWeek, dayOfMonth, schedTime],
+    [enabled, intervalHours, serverUrl, provider, alertPct, scheduleKind, dayOfWeek, dayOfMonth, schedTime],
+  )
+
+  // #997: el toggle de la fila es PLANO y persiste al momento (como los
+  // demás toggles server-side); las opciones solo se editan en el Dialog.
+  const toggleEnabled = useCallback(
+    async (v: boolean) => {
+      setEnabled(v)
+      setError(null)
+      try {
+        const res = await fetch('/api/settings/speedtest', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...bodyJson(), enabled: v }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => null)
+          setError(d?.detail || t('settings.speedtest.saveError'))
+          return
+        }
+        onSaved()
+      } catch {
+        setError(t('settings.speedtest.saveError'))
+      }
+    },
+    [bodyJson, onSaved, t],
   )
 
   const save = useCallback(async () => {
     const raw = serverUrl.trim()
     const urlOk = raw === '' || /^https?:\/\/.+\..+/.test(raw)
     if (raw === 'https://speedtest.net' || raw === 'https://www.speedtest.net' || !urlOk) {
+      setError(t('settings.speedtest.invalidServer'))
+      return
+    }
+    // LibreSpeed (#976) exige la URL base de la instancia y custom (#1001)
+    // la URL completa del endpoint.
+    if ((provider === 'librespeed' || provider === 'custom') && raw === '') {
       setError(t('settings.speedtest.invalidServer'))
       return
     }
@@ -2855,7 +3040,7 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
     } finally {
       setBusy(false)
     }
-  }, [serverUrl, intervalHours, alertPct, scheduleKind, schedTime, bodyJson, onSaved, t])
+  }, [serverUrl, provider, intervalHours, alertPct, scheduleKind, schedTime, bodyJson, onSaved, t])
 
   // «Probar»: guarda la URL del servidor y lanza un test de velocidad
   // inmediato (usa esa URL en el backend).
@@ -2889,21 +3074,79 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
     }
   }, [serverUrl, bodyJson, onSaved, t])
 
+  // Etiqueta/placeholder del campo URL según proveedor (#976, #1001):
+  // LibreSpeed = base de instancia; custom = endpoint libre; Ookla =
+  // servidor opcional; Cloudflare no usa URL.
+  const urlLabel =
+    provider === 'librespeed'
+      ? t('settings.speedtest.librespeedUrl')
+      : provider === 'custom'
+        ? t('settings.speedtest.customUrl')
+        : t('settings.speedtest.serverId')
+  const urlPlaceholder =
+    provider === 'librespeed'
+      ? t('settings.speedtest.librespeedPlaceholder')
+      : provider === 'custom'
+        ? t('settings.speedtest.customPlaceholder')
+        : t('settings.speedtest.serverPlaceholder')
+
   return (
     <div className="space-y-3">
       <div>
         <div className="text-sm font-medium text-text-primary">{t('settings.speedtest.title')}</div>
         <div className="text-caption text-text-muted">{t('settings.speedtest.caption')}</div>
       </div>
+      {/* #997: toggle plano (persiste al cambiar); las opciones se abren
+          SOLO desde el icono Settings2, en un Dialog con el mismo wrapper
+          que el resto de integraciones (nada de acordeón inline). */}
       <SwitchRow
         label={t('settings.speedtest.enabled')}
         checked={enabled}
-        onCheckedChange={(v) => setEnabled(v)}
+        onCheckedChange={(v) => void toggleEnabled(v)}
         disabled={disabled || loading}
+        trailing={
+          <ConfigGear
+            label={t('settings.services.configure', { name: t('settings.speedtest.title') })}
+            onClick={() => setCfgOpen(true)}
+            disabled={disabled || loading}
+          />
+        }
       />
+      {error && !cfgOpen && (
+        <p role="alert" className="text-caption text-danger">
+          {error}
+        </p>
+      )}
+      <Dialog open={cfgOpen} onOpenChange={setCfgOpen}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{t('settings.speedtest.title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+      <label className="block">
+        <span className="flex items-center gap-1 text-label uppercase text-text-muted">
+          {t('settings.speedtest.provider')}
+          <InfoTip text={t('settings.speedtest.providerHint')} />
+        </span>
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value as 'ookla' | 'cloudflare' | 'librespeed' | 'custom')}
+          disabled={disabled || loading}
+          aria-label={t('settings.speedtest.provider')}
+          className="mt-1 w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+        >
+          <option value="ookla">{t('settings.speedtest.providerOokla')}</option>
+          <option value="cloudflare">{t('settings.speedtest.providerCloudflare')}</option>
+          <option value="librespeed">{t('settings.speedtest.providerLibrespeed')}</option>
+          <option value="custom">{t('settings.speedtest.providerCustom')}</option>
+        </select>
+      </label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-label uppercase text-text-muted">{t('settings.speedtest.interval')}</span>
+          <span className="flex items-center gap-1 text-label uppercase text-text-muted">
+            {t('settings.speedtest.interval')}
+            <InfoTip text={t('settings.speedtest.hint')} />
+          </span>
           <select
             value={scheduleKind}
             onChange={(e) => setScheduleKind(e.target.value as 'interval' | 'weekly' | 'monthly')}
@@ -3004,8 +3247,15 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
         </label>
       )}
       <p className="text-caption text-text-muted">{t('settings.speedtest.alertPctHint')}</p>
+      {/* URL del servidor/instancia/endpoint: no aplica a Cloudflare
+          (endpoints fijos); opcional en Ookla, obligatoria en LibreSpeed
+          (#976) y en custom (#1001, donde es la URL completa del endpoint
+          y activa el campo al elegirlo). */}
+      {provider !== 'cloudflare' && (
       <div>
-        <span className="text-label uppercase text-text-muted">{t('settings.speedtest.serverId')}</span>
+        <span className="text-label uppercase text-text-muted">
+          {urlLabel}
+        </span>
         <div className="mt-1 flex items-center gap-2">
           <input
             type="text"
@@ -3013,10 +3263,11 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             disabled={disabled || loading}
-            placeholder={t('settings.speedtest.serverPlaceholder')}
-            aria-label={t('settings.speedtest.serverId')}
+            placeholder={urlPlaceholder}
+            aria-label={urlLabel}
             className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
           />
+          {provider === 'ookla' && (
           <button
             type="button"
             onClick={() => setServerUrl('')}
@@ -3028,6 +3279,7 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
             <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
             <span className="hidden sm:inline">{t('settings.speedtest.serverAuto')}</span>
           </button>
+          )}
           <button
             type="button"
             onClick={() => void testUrl()}
@@ -3039,7 +3291,7 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
           </button>
         </div>
       </div>
-      <p className="text-caption text-text-muted">{t('settings.speedtest.hint')}</p>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -3060,6 +3312,9 @@ function SpeedtestCard({ onSaved, disabled = false }: { onSaved: () => void; dis
           </span>
         )}
       </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <SpeedtestRecent disabled={disabled} />
     </div>
   )
@@ -3143,10 +3398,10 @@ function SpeedtestRecent({ disabled = false }: { disabled?: boolean }) {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label={t('common.close')}
-            className="text-caption text-text-muted hover:text-text-primary"
+            className="flex items-center gap-1 text-caption text-accent hover:underline"
           >
             <ChevronUp className="h-4 w-4" strokeWidth={1.75} />
+            {t('settings.speedtest.recentHide')}
           </button>
         </div>
       </div>
@@ -3208,6 +3463,32 @@ function SpeedtestRecent({ disabled = false }: { disabled?: boolean }) {
 // Página Ajustes `/settings` (settings.md)
 // ---------------------------------------------------------------------------
 
+// Clave de integración configurable desde la tarjeta (icono Settings2 que
+// abre el Dialog con su manager, #968).
+type IntegrationDialogKey = 'adguard' | 'proxmox' | 'ntfy' | 'telegram' | 'mqtt'
+
+// Los diálogos de configuración van GRANDES (#968, #977): el manager
+// (formularios, tablas) necesita el ancho casi completo. Wrapper compartido
+// por Servicios, Notificaciones (#996) y el test periódico (#997).
+const integrationDialogCls = 'w-[calc(100vw-2rem)] max-w-[900px] max-h-[88vh] overflow-y-auto sm:max-w-[900px]'
+
+// ConfigGear: icono Settings2 que abre el Dialog de configuración (#968).
+// Compartido por Servicios, Notificaciones (#996) y el test periódico (#997).
+function ConfigGear({ label, onClick, disabled = false }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-text-muted transition-colors duration-150 hover:border-accent/40 hover:text-accent disabled:opacity-50"
+    >
+      <Settings2 className="h-4 w-4" strokeWidth={1.75} />
+    </button>
+  )
+}
+
 function ServicesCard({
   reduce,
   onSaved,
@@ -3225,10 +3506,21 @@ function ServicesCard({
 }) {
   const { t } = useTranslation()
   const [services, setService] = useServicesVisibility()
-  const rows: { key: keyof ServicesVisibility; label: string; caption: string }[] = [
-    { key: 'adguard', label: 'AdGuard Home', caption: t('settings.services.adguardCaption') },
+  // Toggles server-side de integraciones (#968): se leen del servidor al
+  // montar (coherencia entre navegadores) y se escriben al cambiar.
+  const { integrations, setIntegration } = useIntegrations(!disabled)
+  const [dialog, setDialog] = useState<IntegrationDialogKey | null>(null)
+  const networkRows: { key: keyof ServicesVisibility; label: string; caption: string; dialogKey?: IntegrationDialogKey }[] = [
+    { key: 'adguard', label: 'AdGuard Home', caption: t('settings.services.adguardCaption'), dialogKey: 'adguard' },
     { key: 'wireguard', label: 'WireGuard', caption: t('settings.services.wireguardCaption') },
     { key: 'openvpn', label: 'OpenVPN', caption: t('settings.services.openvpnCaption') },
+  ]
+  // #996: el grupo Integraciones se queda SOLO con MQTT y Proxmox (estado e
+  // inventario); ntfy y Telegram son canales de aviso y viven en la tarjeta
+  // de Notificaciones.
+  const integrationRows: { key: keyof IntegrationsState; label: string; caption: string; dialogKey: IntegrationDialogKey }[] = [
+    { key: 'proxmox', label: 'Proxmox VE', caption: t('settings.services.proxmoxCaption'), dialogKey: 'proxmox' },
+    { key: 'mqtt', label: 'MQTT', caption: t('settings.services.mqttCaption'), dialogKey: 'mqtt' },
   ]
 
   // AdGuard (#813): el toggle de Servicios también controla el sondeo y la
@@ -3258,53 +3550,66 @@ function ServicesCard({
     }
   }
 
+  // Icono Settings2 como trailing del SwitchRow: abre el Dialog con el
+  // manager de la integración (#968).
+  const gear = (dialogKey: IntegrationDialogKey, name: string) => (
+    <ConfigGear label={t('settings.services.configure', { name })} onClick={() => setDialog(dialogKey)} />
+  )
+
   return (
     <Card title={t('settings.services.title')} caption={t('settings.services.caption')} index={3} reduce={reduce}>
       <div className="grid grid-cols-1 gap-x-6 gap-y-0 sm:grid-cols-2">
-        <div className="divide-y divide-border/60">
-          <SwitchRow
-            label={rows[0]!.label}
-            caption={rows[0]!.caption}
-            checked={services[rows[0]!.key]}
-            disabled={disabled}
-            onCheckedChange={(v) => {
-              onServiceToggle(rows[0]!.key, v)
-              onSaved()
-            }}
-          />
-          <SwitchRow
-            label={rows[1]!.label}
-            caption={rows[1]!.caption}
-            checked={services[rows[1]!.key]}
-            disabled={disabled}
-            onCheckedChange={(v) => {
-              onServiceToggle(rows[1]!.key, v)
-              onSaved()
-            }}
-          />
-        </div>
-        <div className="divide-y divide-border/60">
-          <SwitchRow
-            label={rows[2]!.label}
-            caption={rows[2]!.caption}
-            checked={services[rows[2]!.key]}
-            disabled={disabled}
-            onCheckedChange={(v) => {
-              onServiceToggle(rows[2]!.key, v)
-              onSaved()
-            }}
-          />
-          <div className="py-3">
+        {/* Grupo "Servicios de red": toggles de visibilidad (AdGuard/WG/
+            OpenVPN) + Labs DIRECTAMENTE DEBAJO de OpenVPN. */}
+        <div>
+          <div className="pb-1 text-label uppercase text-text-muted">{t('settings.services.networkGroup')}</div>
+          <div className="divide-y divide-border/60">
+            {networkRows.map((row) => (
+              <SwitchRow
+                key={row.key}
+                label={row.label}
+                caption={row.caption}
+                checked={services[row.key]}
+                disabled={disabled}
+                trailing={row.dialogKey ? gear(row.dialogKey, row.label) : undefined}
+                onCheckedChange={(v) => {
+                  onServiceToggle(row.key, v)
+                  onSaved()
+                }}
+              />
+            ))}
             <SwitchRow
               label={t('settings.services.labs')}
               caption={t('settings.services.labsCaption')}
               checked={services.labs}
               disabled={disabled}
+              danger
               onCheckedChange={(v) => {
                 setService('labs', v)
                 onSaved()
               }}
             />
+          </div>
+        </div>
+        {/* Grupo "Integraciones": toggles SERVER-SIDE (Proxmox/MQTT) con
+            icono de configuración (#996: ntfy/Telegram van en Notificaciones). */}
+        <div>
+          <div className="pb-1 text-label uppercase text-text-muted">{t('settings.services.integrationsGroup')}</div>
+          <div className="divide-y divide-border/60">
+            {integrationRows.map((row) => (
+              <SwitchRow
+                key={row.key}
+                label={row.label}
+                caption={row.caption}
+                checked={integrations[row.key]}
+                disabled={disabled}
+                trailing={gear(row.dialogKey, row.label)}
+                onCheckedChange={(v) => {
+                  setIntegration(row.key, v)
+                  onSaved()
+                }}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -3319,6 +3624,7 @@ function ServicesCard({
               checked={orchOn}
               onCheckedChange={(v) => void toggleOrchestration(v)}
               disabled={orchBusy || disabled}
+              danger
             />
             {/* Canales */}
             <SwitchRow
@@ -3326,6 +3632,7 @@ function ServicesCard({
               caption={t('settings.labs.canalesCaption')}
               checked={services.canales}
               disabled={disabled}
+              danger
               onCheckedChange={(v) => {
                 setService('canales', v)
                 onSaved()
@@ -3339,6 +3646,7 @@ function ServicesCard({
               caption={t('settings.labs.actualizacionesCaption')}
               checked={services.actualizaciones}
               disabled={disabled}
+              danger
               onCheckedChange={(v) => {
                 setService('actualizaciones', v)
                 onSaved()
@@ -3348,15 +3656,94 @@ function ServicesCard({
         </div>
       )}
 
-      <p className="mt-3 rounded-xl bg-elevated px-3.5 py-2.5 text-caption leading-relaxed text-text-muted">
-        {t('settings.services.note')}
-      </p>
+      {/* Diálogos de configuración de integraciones (#968): los managers
+          viven SOLO en diálogo (#977: las cards sueltas ya no están en el
+          flujo). Título sr-only: el Card del manager ya lo muestra. */}
+      <Dialog open={dialog === 'adguard'} onOpenChange={(o) => { if (!o) setDialog(null) }}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('settings.adguard.title')}</DialogTitle>
+          </DialogHeader>
+          <AdGuardManager reduce={reduce} onSaved={onSaved} />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dialog === 'proxmox'} onOpenChange={(o) => { if (!o) setDialog(null) }}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('settings.proxmox.title')}</DialogTitle>
+          </DialogHeader>
+          <ProxmoxManager reduce={reduce} onSaved={onSaved} />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dialog === 'mqtt'} onOpenChange={(o) => { if (!o) setDialog(null) }}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('settings.mqtt.title')}</DialogTitle>
+          </DialogHeader>
+          <MqttCard onSaved={onSaved} bare />
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Tarjeta «Notificaciones push» (SPEC-PUSH §2)
+// Canales de envío de avisos dentro de la card de Notificaciones (#996):
+// ntfy y Telegram son canales de notificación, no integraciones de estado o
+// inventario (esas - MQTT y Proxmox - se quedan en Servicios). Mismos
+// toggles server-side settings.integrations.{ntfy,telegram} (#968) e icono
+// Settings2 que abre el Dialog con su card de configuración.
+// ---------------------------------------------------------------------------
+function NotifChannels({ onSaved, disabled = false }: { onSaved: () => void; disabled?: boolean }) {
+  const { t } = useTranslation()
+  const { integrations, setIntegration } = useIntegrations(!disabled)
+  const [dialog, setDialog] = useState<'ntfy' | 'telegram' | null>(null)
+  const rows: { key: 'ntfy' | 'telegram'; label: string; caption: string }[] = [
+    { key: 'ntfy', label: 'ntfy', caption: t('settings.notif.ntfyCaption') },
+    { key: 'telegram', label: 'Telegram', caption: t('settings.notif.telegramCaption') },
+  ]
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="divide-y divide-border/60">
+        {rows.map((row) => (
+          <SwitchRow
+            key={row.key}
+            label={row.label}
+            caption={row.caption}
+            checked={integrations[row.key]}
+            disabled={disabled}
+            trailing={<ConfigGear label={t('settings.services.configure', { name: row.label })} onClick={() => setDialog(row.key)} />}
+            onCheckedChange={(v) => {
+              setIntegration(row.key, v)
+              onSaved()
+            }}
+          />
+        ))}
+      </div>
+      <Dialog open={dialog === 'ntfy'} onOpenChange={(o) => { if (!o) setDialog(null) }}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('settings.ntfy.title')}</DialogTitle>
+          </DialogHeader>
+          <NtfyCard onSaved={onSaved} bare />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dialog === 'telegram'} onOpenChange={(o) => { if (!o) setDialog(null) }}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('settings.telegram.title')}</DialogTitle>
+          </DialogHeader>
+          <TelegramCard onSaved={onSaved} bare />
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Subsección «Notificaciones push» dentro de la card de Notificaciones
+// (#977; antes card suelta, SPEC-PUSH §2). Versión compacta: el texto largo
+// vive en el (i) del título de la subsección.
 // ---------------------------------------------------------------------------
 
 type PushCardState =
@@ -3368,7 +3755,7 @@ type PushCardState =
   | 'enabled' // suscripción push activa
   | 'disabled' // todo listo, falta activar
 
-function PushNotificationsCard({ reduce, onSaved, compact }: { reduce: boolean; onSaved: () => void; compact?: boolean }) {
+function PushNotificationsCard({ onSaved }: { onSaved: () => void }) {
   const { t } = useTranslation()
   const { isDemo } = useNetPulse()
   const [state, setState] = useState<PushCardState>('loading')
@@ -3475,36 +3862,36 @@ function PushNotificationsCard({ reduce, onSaved, compact }: { reduce: boolean; 
     }
   }, [busy, t, onSaved])
 
-  const btnBase =
-    'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50'
+  // #998: la activación es un check como el resto de la sección, visible en
+  // todos los estados. Sin HTTPS la página no es un contexto seguro y el
+  // navegador no permite suscribirse a Web Push (pushContext() ->
+  // window.isSecureContext), así que el check queda deshabilitado y la nota
+  // de abajo explica el porqué.
+  const toggleable = state === 'enabled' || state === 'disabled'
 
-  const inner = (
-    <>
-      {state === 'loading' && <p className="text-caption text-text-muted">{t('settings.push.checking')}</p>}
-
-      {state === 'enabled' && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ok/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-ok">
-              <BellRing className="h-3.5 w-3.5" strokeWidth={2} />
-              {t('settings.push.stateOn')}
-            </span>
-            {!compact && <p className="text-caption leading-snug text-text-muted">{t('settings.push.stateOnCaption')}</p>}
-          </div>
-          <button type="button" disabled={busy} onClick={() => void disable()} className={cn(btnBase, 'border border-border bg-elevated text-text-primary')}>
-            <BellOff className="h-3.5 w-3.5" strokeWidth={2} />
-            {busy ? t('settings.push.disabling') : t('settings.push.disable')}
-          </button>
-        </div>
-      )}
-
-      {state === 'disabled' && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {!compact && <p className="min-w-0 flex-1 text-caption leading-snug text-text-secondary">{t('settings.push.stateOffCaption')}</p>}
-          <button type="button" disabled={busy} onClick={() => void enable()} className={cn(btnBase, 'bg-accent text-canvas')}>
-            <BellRing className="h-3.5 w-3.5" strokeWidth={2} />
-            {busy ? t('settings.push.enabling') : t('settings.push.enable')}
-          </button>
+  return (
+    <div className="space-y-2">
+      {state === 'loading' ? (
+        <p className="text-caption text-text-muted">{t('settings.push.checking')}</p>
+      ) : (
+        <div className="flex items-center justify-between gap-4 py-1">
+          <span className="text-sm text-text-secondary">
+            {state === 'enabled' ? t('settings.push.stateOn') : t('settings.push.stateOff')}
+          </span>
+          {/* Al pasar por encima del check deshabilitado se ve el porqué
+              (sin HTTPS no hay Web Push); el wrapper recibe el hover aunque
+              el Switch esté disabled. */}
+          <span
+            className="inline-flex"
+            title={!toggleable ? t(`settings.push.${state === 'demo' ? 'demoNote' : state}`) : undefined}
+          >
+            <Switch
+              checked={state === 'enabled'}
+              disabled={busy || !toggleable}
+              onCheckedChange={(v) => void (v ? enable() : disable())}
+              aria-label={t('settings.push.title')}
+            />
+          </span>
         </div>
       )}
 
@@ -3520,8 +3907,8 @@ function PushNotificationsCard({ reduce, onSaved, compact }: { reduce: boolean; 
         </p>
       )}
 
-      {/* FORK: said, not left blank - over plain HTTP the card used to show
-          nothing at all, and the option looked missing. */}
+      {/* Sin HTTPS el check se ve pero no se puede activar (#998): la nota
+          explica cómo habilitarlo (Ajustes > HTTPS). */}
       {state === 'insecure' && (
         <p className="rounded-xl bg-elevated px-3 py-2 text-caption leading-relaxed text-text-muted">
           {t('settings.push.insecure')}
@@ -3539,19 +3926,7 @@ function PushNotificationsCard({ reduce, onSaved, compact }: { reduce: boolean; 
           {error}
         </p>
       )}
-
-      {!compact && (state === 'enabled' || state === 'disabled') && (
-        <p className="mt-3 text-caption leading-relaxed text-text-muted">{t('settings.push.note')}</p>
-      )}
-    </>
-  )
-
-  if (compact) return inner
-
-  return (
-    <Card title={t('settings.push.title')} caption={t('settings.push.caption')} index={4} reduce={reduce}>
-      {inner}
-    </Card>
+    </div>
   )
 }
 
@@ -3752,7 +4127,10 @@ function AutoUpdatePanel() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-caption text-text-muted">{t('settings.autoupdate.mode')}</span>
+          <span className="flex items-center gap-1 text-caption text-text-muted">
+            {t('settings.autoupdate.mode')}
+            <InfoTip text={t('settings.autoupdate.hint')} />
+          </span>
           <select
             value={enabled ? kind : 'off'}
             onChange={(ev) => {
@@ -3822,8 +4200,6 @@ function AutoUpdatePanel() {
       </div>
 
       {err && <p className="text-sm text-danger">{err}</p>}
-
-      <p className="text-xs text-text-muted">{t('settings.autoupdate.hint')}</p>
 
       {enabled && info.nextRunMs != null && (
         <p className="text-sm text-text-secondary">
@@ -4118,8 +4494,8 @@ function AdoptionCard() {
       <div className="mb-3 flex items-center gap-2">
         <Wifi className="h-4 w-4 text-accent" strokeWidth={1.75} aria-hidden="true" />
         <h3 className="text-sm font-semibold text-text-primary">{t('settings.adoption.title')}</h3>
+        <InfoTip text={t('settings.adoption.hint')} />
       </div>
-      <p className="mb-3 text-xs text-text-secondary">{t('settings.adoption.hint')}</p>
 
       <div className="space-y-2">
         <div className="flex items-center gap-2">
@@ -4275,8 +4651,6 @@ export default function Settings() {
   const reduce = useReducedMotion() ?? false
   const { devices, wan, isDemo, refresh: refreshOverview } = useNetPulse()
   const auth = useAuth()
-  // SPEC-65 D65-7c: la tarjeta AdGuard entera desaparece si el servicio está oculto
-  const [services] = useServicesVisibility()
   const [adminPanel, setAdminPanel] = useState<'users' | 'backups' | 'autoupdate' | null>(null)
 
   // ——— Orquestación (issue #121): toggle opt-in en la AdminBar ———
@@ -4637,7 +5011,6 @@ export default function Settings() {
       ...(!isDemo && auth?.role === 'admin'
         ? [
             { href: '#sec-red', label: t('settings.sections.network') },
-            { href: '#sec-integraciones', label: t('settings.sections.integrations') },
             { href: '#sec-cuenta', label: t('settings.sections.account') },
             { href: '#sec-admin', label: t('settings.sections.administration') },
           ]
@@ -4710,11 +5083,6 @@ export default function Settings() {
           </div>
         )}
         {!isDemo && auth?.role === 'admin' && (
-          <div className="scroll-mt-32 order-130" id="sec-integraciones">
-            <SectionLabel>{t('settings.sections.integrations')}</SectionLabel>
-          </div>
-        )}
-        {!isDemo && auth?.role === 'admin' && (
           <div className="scroll-mt-32 order-160" id="sec-cuenta">
             <SectionLabel>{t('settings.sections.account')}</SectionLabel>
           </div>
@@ -4771,7 +5139,10 @@ export default function Settings() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-caption text-text-muted">{t('settings.data.tempUnit')}</div>
+                      <div className="flex items-center gap-1 text-caption text-text-muted">
+                        {t('settings.data.tempUnit')}
+                        <InfoTip text={t('settings.data.tempNote')} />
+                      </div>
                       <div className="mt-1.5">
                         <SegmentedControl
                           options={[
@@ -4823,12 +5194,10 @@ export default function Settings() {
                       ariaLabel={t('settings.data.refresh')}
                     />
                   </div>
-                  <p className="mt-2 text-caption text-text-muted">{t('settings.data.refreshNote')}</p>
                 </div>
-                {/* Retención de eventos de presencia/roaming (#771) */}
-                <PresenceRetentionRow />
-                {/* Cadencia de ingesta de eventos de roaming (#907) */}
-                <RoamCollectRow />
+                {/* Limitar historial (#975): toggle maestro + diálogo con
+                    retención de presencia (#771) e ingesta de itinerancia (#907) */}
+                <LimitHistoryRow onSaved={notify} />
               </div>
 
               {/* Sliders de umbrales */}
@@ -4907,7 +5276,6 @@ export default function Settings() {
                   </div>
                 ))}
               </div>
-              <p className="mt-4 text-caption leading-relaxed text-text-muted">{t('settings.data.tempNote')}</p>
             </div>
 
             {/* divider: Velocidad WAN contratada (izq) | Test de velocidad periódico (der) */}
@@ -5064,7 +5432,7 @@ export default function Settings() {
           <ServicesCard reduce={reduce} onSaved={notify} disabled={isDemo} orchOn={orchOn} orchBusy={orchBusy} toggleOrchestration={toggleOrchestration} />
         </div>
 
-        {/* ⑤ Notificaciones visuales */}
+        {/* ⑤ Notificaciones (visuales + push + idioma, #977) */}
         <div className="order-60">
           <Card title={t('settings.notif.title')} caption={t('settings.notif.caption')} index={3} reduce={reduce}>
             <div className="grid grid-cols-1 gap-x-6 gap-y-0 sm:grid-cols-3">
@@ -5123,53 +5491,41 @@ export default function Settings() {
                 }
               />
             </div>
-            <p className="mt-3 rounded-xl bg-elevated px-3.5 py-2.5 text-caption leading-relaxed text-text-muted">
-              {t('settings.notif.note')}
-            </p>
+            {/* Canales de envío server-side (#996): ntfy y Telegram con sus
+                toggles e icono de configuración, mismo patrón que el resto
+                de la sección. */}
+            <NotifChannels onSaved={notify} disabled={isDemo} />
+
+            {/* Notificaciones push DENTRO de la misma card (#977): el texto
+                largo vive en el (i) del título de la subsección. */}
+            <div className="mt-4 border-t border-border pt-4">
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-sm font-medium text-text-primary">{t('settings.push.title')}</span>
+                <InfoTip text={t('settings.push.note')} />
+              </div>
+              <PushNotificationsCard onSaved={notify} />
+            </div>
+
+            {/* Idioma de las notificaciones (#889): movido a esta card
+                (#977). #998: una sola fila (título + (i) + select), sin el
+                label duplicado que decía lo mismo. */}
+            {!isDemo && (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-text-primary">{t('settings.alertsLang.title')}</span>
+                    <InfoTip text={t('settings.alertsLang.description')} />
+                  </div>
+                  <AlertsLangControl onSaved={notify} />
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 
-        {/* FORK: Web Push as its own card in Notifications. It was only a
-            small unlabelled button in About, and absent over plain HTTP. */}
-        <div className="order-61">
-          <PushNotificationsCard reduce={reduce} onSaved={notify} />
-        </div>
-
-        {/* Idioma de las notificaciones push (#889): server-wide */}
-        {!isDemo && (
-          <div className="order-69">
-            <Card title={t('settings.alertsLang.title')} caption={t('settings.alertsLang.description')} index={4} reduce={reduce}>
-              <AlertsLangControl onSaved={notify} />
-            </Card>
-          </div>
-        )}
-
-        {/* Telegram (#326): notificaciones directas al bot — sección Notificaciones */}
-        {!isDemo && (
-          <div className="order-70">
-            <Card title={t('settings.telegram.title')} caption={t('settings.telegram.description')} index={4} reduce={reduce}>
-              <TelegramCard onSaved={notify} bare />
-            </Card>
-          </div>
-        )}
-
-        {/* ntfy (#766): notificaciones via ntfy.sh o self-hosted */}
-        {!isDemo && (
-          <div className="order-71">
-            <Card title={t('settings.ntfy.title')} caption={t('settings.ntfy.description')} index={4} reduce={reduce}>
-              <NtfyCard onSaved={notify} />
-            </Card>
-          </div>
-        )}
-
-        {/* MQTT (#838): publisher de flota para Home Assistant y propagación a NetGrip */}
-        {!isDemo && (
-          <div className="order-72">
-            <Card title={t('settings.mqtt.title')} caption={t('settings.mqtt.description')} index={4} reduce={reduce}>
-              <MqttCard onSaved={notify} />
-            </Card>
-          </div>
-        )}
+        {/* MQTT (#977) se configura desde el icono Settings2 de la tarjeta
+            Integraciones (Servicios); ntfy/Telegram (#996) desde las filas
+            de la propia tarjeta de Notificaciones. */}
 
         {/* AdminBar canónica: Actualizaciones → Usuarios → Modo demo (derecha).
             Solo admin y modo live. Los paneles (Usuarios) se despliegan debajo;
@@ -5272,11 +5628,14 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Historial de actualizaciones (issue #159) — solo admin y modo live;
-            el updater es un mecanismo de auto-aplicación que no existe en demo */}
-        {!isDemo && auth?.role === 'admin' && (
-          <div className="order-210">
-            <UpdateHistoryCard />
+        {/* API Tokens (#330): bearer tokens con scopes para integraciones.
+            Viven en la zona de Administración (#999), entre la AdminBar y
+            el historial de actualizaciones. */}
+        {!isDemo && (
+          <div className="order-205">
+            <Card title={t('tokens.title')} caption={t('tokens.caption')} index={6} reduce={reduce}>
+              <TokensManager />
+            </Card>
           </div>
         )}
 
@@ -5298,6 +5657,7 @@ export default function Settings() {
               caption={t('settings.overrides.caption')}
               index={5}
               reduce={reduce}
+              headerSlot={<InfoTip text={t('settings.overrides.hint')} />}
             >
               <TopologyOverridesManager onSaved={notify} />
             </Card>
@@ -5305,14 +5665,15 @@ export default function Settings() {
         )}
 
         {/* Dispositivos de confianza (issue #196): allowlist de MACs que no
-            avisan como «desconocido» y cuyo nombre se usa como alias. */}
+            avisan como «desconocido» y cuyo nombre se usa como alias.
+            Versión mínima (#1000): el contexto va en el InfoTip. */}
         {!isDemo && auth?.role === 'admin' && (
           <div className="order-110">
             <Card
               title={t('settings.knownMacs.title')}
-              caption={t('settings.knownMacs.caption')}
               index={5}
               reduce={reduce}
+              headerSlot={<InfoTip text={t('settings.knownMacs.info')} />}
             >
               <KnownMacsManager onSaved={notify} />
             </Card>
@@ -5330,26 +5691,15 @@ export default function Settings() {
             still do (HttpsCard). Admin only, live mode. */}
         {!isDemo && auth?.role === 'admin' && (
           <div className="order-121" id="https">
-            <Card title={t('settings.https.title')} caption={t('settings.https.caption')} index={5} reduce={reduce}>
+            <Card title={t('settings.https.title')} index={5} reduce={reduce}>
               <HttpsCard onSaved={notify} />
             </Card>
           </div>
         )}
 
-        {/* AdGuard Home (GL.iNet) — solo admin, modo live y servicio visible */}
-        {!isDemo && auth?.role === 'admin' && services.adguard && (
-          <div className="order-140">
-            <AdGuardManager reduce={reduce} onSaved={notify} />
-          </div>
-        )}
-
-        {/* Proxmox VE (#561): inventario read-only del cluster para sellar
-            hypervisor/ct. */}
-        {!isDemo && auth?.role === 'admin' && (
-          <div className="order-150">
-            <ProxmoxManager reduce={reduce} onSaved={notify} />
-          </div>
-        )}
+        {/* AdGuard Home y Proxmox VE (#968): sus managers viven SOLO en el
+            Dialog que abre el icono Settings2 de la tarjeta Integraciones;
+            ya no son tarjetas sueltas del flujo. */}
 
         {/* Mi perfil (issue #119): card canónica del shared-shell — avatar,
             nombre editable (clic → input inline ✓/✕), idioma, contraseña y
@@ -5548,15 +5898,6 @@ export default function Settings() {
           </Card>
         </div>
 
-        {/* API Tokens (#330): bearer tokens con scopes para integraciones */}
-        {!isDemo && (
-          <div className="order-180">
-            <Card title={t('tokens.title')} caption={t('tokens.caption')} index={6} reduce={reduce}>
-              <TokensManager />
-            </Card>
-          </div>
-        )}
-
         {/* ⑥ Acerca de */}
         <div className="order-230">
           <Card title={t('settings.about.title')} index={6} reduce={reduce}>
@@ -5640,14 +5981,14 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Derecha: Sistema */}
+              {/* Derecha: Sistema + historial de actualizaciones */}
               <div>
-                {pushContext() === 'insecure' && (
-                  <p className="mb-3 rounded-xl bg-warn/10 px-3 py-2 text-caption leading-relaxed text-warn">
-                    {t('settings.push.insecure')}
-                  </p>
-                )}
                 <SystemInfoBlock bare />
+                {!isDemo && auth?.role === 'admin' && (
+                  <div className="mt-4">
+                    <UpdateHistoryCard />
+                  </div>
+                )}
               </div>
             </div>
           </Card>

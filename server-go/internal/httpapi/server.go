@@ -150,6 +150,10 @@ type server struct {
 	pollNow func()
 	started time.Time
 
+	// MQTT publisher (#838): lo usa también el endpoint de integraciones
+	// (#968) para el toggle enabled sin tocar el resto de la config.
+	mqtt *mqttpub.Manager
+
 	// SSE bidireccional para agentes (Fase 7.3).
 	agentHub *sse.AgentHub
 
@@ -270,6 +274,7 @@ func NewHandler(d Deps) http.Handler {
 		imageResolver:   d.FirmwareImage,
 		speedtest:       d.Speedtest,
 		alertEmitter:    d.AlertEmitter,
+		mqtt:            d.MQTT,
 	}
 	if s.imageResolver == nil {
 		s.imageResolver = firmware.NewImageResolver()
@@ -353,6 +358,9 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/presence/roaming", s.handlePresenceRoaming)
 	mux.Handle("GET /api/settings/presence", auth.RequireAdmin(http.HandlerFunc(s.handlePresenceSettingsGet)))
 	mux.Handle("PUT /api/settings/presence", auth.RequireAdmin(http.HandlerFunc(s.handlePresenceSettingsPut)))
+	// Interruptor maestro de la poda del historial (#975).
+	mux.Handle("GET /api/settings/history-limit", auth.RequireAdmin(http.HandlerFunc(s.handleHistoryLimitGet)))
+	mux.Handle("PUT /api/settings/history-limit", auth.RequireAdmin(http.HandlerFunc(s.handleHistoryLimitPut)))
 	// Reserva DHCP y bloqueo de dispositivo (issue #439).
 	mux.Handle("GET /api/devices/{mac}/reservation", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceReservationGet)))
 	mux.Handle("PUT /api/devices/{mac}/reservation", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceReservationPut)))
@@ -366,6 +374,7 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("PUT /api/alerts/config", s.handleAlertsConfigPut)
 	mux.HandleFunc("POST /api/alerts/read", s.handleAlertsRead)
 	mux.HandleFunc("POST /api/alerts/read-all", s.handleAlertsReadAll)
+	mux.HandleFunc("POST /api/alerts/clear", s.handleAlertsClear)
 	mux.HandleFunc("POST /api/alerts/dismiss", s.handleAlertsDismiss)
 	mux.HandleFunc("POST /api/alerts/silence", s.handleAlertsSilence)
 	mux.HandleFunc("POST /api/alerts/unsilence", s.handleAlertsUnsilence)

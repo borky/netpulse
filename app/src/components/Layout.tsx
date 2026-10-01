@@ -65,8 +65,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/alerts', labelKey: 'nav.alerts', icon: Bell },
   { to: '/reports', labelKey: 'nav.reports', icon: BarChart3 },
   { to: '/orchestration', labelKey: 'nav.orchestration', icon: Wrench, adminOnly: true, badge: 'labs' },
-  { to: '/help', labelKey: 'nav.help', icon: CircleHelp },
   { to: '/settings', labelKey: 'nav.settings', icon: Settings },
+  { to: '/help', labelKey: 'nav.help', icon: CircleHelp },
 ]
 
 /** Badge de alertas sin leer, desde el DataProvider */
@@ -171,39 +171,23 @@ function NavItemBadge({ to, variant }: { to: string; variant: 'sidebar' | 'rail'
   )
 }
 
-/** Tarjeta "Estado del gateway" al pie del sidebar (datos del provider) */
-function GatewayStatus() {
+/** Punto de estado live compacto (#981): variante icon-only del LivePill para
+ *  el sidebar colapsado y el rail de tablet, que no tienen sitio para la pill. */
+function LiveDot() {
   const { t } = useTranslation()
-  const { routers } = useNetPulse()
-  const gw = routers.find((r) => r.roleBadge === 'Principal') ?? routers[0]
-  if (!gw) {
-    return (
-      <div className="flex items-center gap-2.5 rounded-xl bg-elevated px-3 py-2.5">
-        <span className="relative flex h-2 w-2">
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-text-muted" />
-        </span>
-        <div className="min-w-0">
-          <div className="truncate text-caption font-semibold text-text-secondary">{t('topbar.gatewayStatus')}</div>
-          <div className="truncate font-mono text-caption text-text-muted">—</div>
-        </div>
-      </div>
-    )
-  }
-  const statusLabel = t(`common.status.${gw.status}`)
-  const dotClass = gw.status === 'online' ? 'bg-ok' : gw.status === 'warn' ? 'bg-warn' : 'bg-danger'
+  const { connectionStatus } = useNetPulse()
+  const reconnecting = connectionStatus === 'reconnecting'
+  const label = t(reconnecting ? 'topbar.reconnecting' : 'topbar.live')
   return (
-    <div className="flex items-center gap-2.5 rounded-xl bg-elevated px-3 py-2.5">
-      <span className="relative flex h-2 w-2">
-        <span className={cn('absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping-soft', dotClass)} />
-        <span className={cn('relative inline-flex h-2 w-2 rounded-full', dotClass)} />
-      </span>
-      <div className="min-w-0">
-        <div className="truncate text-caption font-semibold text-text-secondary">{t('topbar.gatewayStatus')}</div>
-        <div className="truncate font-mono text-caption text-text-muted">
-          {gw.modelShort.replace('GL.iNet ', '')} · {statusLabel} · {gw.uptime}
-        </div>
-      </div>
-    </div>
+    <span className="relative flex h-2 w-2" role="status" title={label} aria-label={label}>
+      <span
+        className={cn(
+          'absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping-soft',
+          reconnecting ? 'bg-warn' : 'bg-ok',
+        )}
+      />
+      <span className={cn('relative inline-flex h-2 w-2 rounded-full', reconnecting ? 'bg-warn' : 'bg-ok')} />
+    </span>
   )
 }
 
@@ -238,10 +222,6 @@ function useVisibleNavItems(): NavItem[] {
 function Sidebar({ collapsed, onToggleCollapse }: { collapsed: boolean; onToggleCollapse: () => void }) {
   const { t } = useTranslation()
   const items = useVisibleNavItems()
-  const main = items.filter((i) => i.to !== '/settings')
-  // Settings siempre es el último ítem de NAV_ITEMS y los filtros de
-  // useVisibleNavItems nunca lo quitan → garantizado definido.
-  const settings = items[items.length - 1]!
 
   if (collapsed) {
     // Sidebar colapsado = raíl de iconos en lg (persiste en localStorage)
@@ -276,8 +256,8 @@ function Sidebar({ collapsed, onToggleCollapse }: { collapsed: boolean; onToggle
             </NavLink>
           ))}
         </nav>
-        <div className="flex flex-col items-center gap-2 border-t border-border py-3">
-          <ThemeToggle />
+        <div className="flex flex-col items-center gap-3 border-t border-border py-3">
+          <LiveDot />
           <button
             type="button"
             onClick={onToggleCollapse}
@@ -297,7 +277,7 @@ function Sidebar({ collapsed, onToggleCollapse }: { collapsed: boolean; onToggle
         <Logo />
       </div>
       <nav className="flex-1 space-y-1 px-3 py-2" aria-label={t('nav.mainNav')}>
-        {main.map((item) => (
+        {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -331,31 +311,19 @@ function Sidebar({ collapsed, onToggleCollapse }: { collapsed: boolean; onToggle
           </NavLink>
         ))}
       </nav>
-      <div className="space-y-3 border-t border-border p-3">
-        <GatewayStatus />
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <NavLink
-            to={settings.to}
-            className={({ isActive }) =>
-              cn(
-                'flex h-9 flex-1 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-150',
-                isActive ? 'bg-accent-soft text-accent' : 'text-text-secondary hover:bg-hover hover:text-text-primary',
-              )
-            }
-          >
-            <settings.icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
-            {t('nav.settings')}
-          </NavLink>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            aria-label={t('nav.collapse')}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-elevated text-text-secondary transition-colors hover:border-accent/40 hover:text-accent"
-          >
-            <ChevronsLeft className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-        </div>
+      {/* Pie del sidebar (#981): indicador "En vivo" + boton de plegar en la
+          misma fila (sustituye a la antigua tarjeta de estado del gateway). */}
+      <div className="flex items-center gap-2 border-t border-border p-3">
+        <LivePill />
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-label={t('nav.collapse')}
+          className="flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-elevated text-sm font-medium text-text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+        >
+          <ChevronsLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <span className="truncate">{t('nav.collapse')}</span>
+        </button>
       </div>
     </aside>
   )
@@ -399,8 +367,8 @@ function Rail() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-border py-3">
-        <ThemeToggle />
+      <div className="flex items-center justify-center border-t border-border py-3">
+        <LiveDot />
       </div>
     </aside>
   )
@@ -435,7 +403,7 @@ function BellButton() {
 // Topbar (≥768px) — h-14
 // ---------------------------------------------------------------------------
 
-/** Pill de estado de conexión en el topbar (live: "En vivo"; reconectando: amber) */
+/** Pill de estado de conexión en el pie del sidebar (#981): verde "En vivo"; amber "Reconectando". */
 function LivePill() {
   const { t } = useTranslation()
   const { connectionStatus } = useNetPulse()
@@ -500,7 +468,7 @@ function Topbar() {
             strokeWidth={1.75}
           />
         </button>
-        <LivePill />
+        <ThemeToggle />
         <BellButton />
       </div>
     </header>

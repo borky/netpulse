@@ -1,6 +1,5 @@
 {
   "alerts": {
-    "allKinds": "Todos los tipos",
     "allRead": "Todo leído — la red está tranquila",
     "chipCritical": "críticos",
     "chipCriticalCaption": "Nunca ha habido uno crítico. Toca madera.",
@@ -16,15 +15,7 @@
     "emptyTitle": "Silencio total",
     "eventCount_one": "1 evento",
     "eventCount_other": "{{count}} alertas",
-    "filterByKind": "Filtrar por tipo",
     "filterBySeverity": "Filtrar por severidad",
-    "kinds": {
-      "adguard": "AdGuard",
-      "dispositivos": "Dispositivos",
-      "router": "Router",
-      "sistema": "Sistema",
-      "wireguard": "WireGuard"
-    },
     "loadingOld": "Cargando alertas antiguas…",
     "markAllRead": "Marcar todo como leído",
     "moreActions": "Más acciones",
@@ -372,9 +363,9 @@
       "vm": "VM",
       "vmTip": "Máquina virtual en {{host}}"
     },
-    "bandAll": "Todas",
     "changeView": "Cambiar vista",
     "clearFilters": "Limpiar filtros",
+    "connection": "Conexión",
     "colBand": "Banda",
     "colDevice": "Dispositivo",
     "colFirstSeen": "Vista por primera vez",
@@ -382,6 +373,10 @@
     "colSignal": "Señal",
     "colTraffic": "Tráfico",
     "colType": "Tipo",
+    "columns": {
+      "action": "Mostrar u ocultar columnas",
+      "title": "Columnas"
+    },
     "copyIp": "Copiar IP",
     "detail": {
       "dhcpLease": "Concesión DHCP",
@@ -390,12 +385,6 @@
       "infra": "Infraestructura",
       "manufacturer": "Fabricante (OUI)",
       "protected": "Protegido",
-      "rename": "Renombrar dispositivo",
-      "renameLocal": "Solo se guarda en este navegador.",
-      "traffic24h": "Tráfico 24 h",
-      "trafficCurrent": "Tráfico actual",
-      "traffic": "Tráfico por cliente",
-      "trafficNoSource": "Sin tráfico por cliente: los clientes por cable necesitan nlbwmon en el router (los WiFi usan los contadores de hostapd).",
       "unfiltered": "Sin filtrar",
       "connectedTo": "Conectado a"
     },
@@ -404,6 +393,7 @@
     "emptyTitle": "Nada por aquí",
     "filterByBand": "Filtrar por banda",
     "filterByRouter": "Filtrar por router",
+    "fleet": "Flota",
     "gridView": "Vista de tarjetas",
     "groups": {
       "infra": "Infra",
@@ -425,7 +415,6 @@
     "leaseUnlimited": "ilimitado",
     "edit": {
       "title": "Editar dispositivo",
-      "description": "Cambia el nombre y el icono de este dispositivo.",
       "action": "Editar",
       "name": "Nombre",
       "nameHint": "Vacío = nombre automático (hostname DHCP)",
@@ -466,7 +455,6 @@
     "onlineOffline": "Offline",
     "filterByOnline": "Filtrar por estado",
     "removeFilter": "Quitar filtro {{label}}",
-    "routerAll": "Todos",
     "searchAria": "Buscar dispositivos",
     "searchPlaceholder": "Buscar por nombre, IP o MAC…",
     "showing": "Mostrando",
@@ -504,7 +492,7 @@
       "tv": "TV"
     },
     "wiredConnection": "Conexión por cable",
-    "weakChip": "{{count}} con señal débil",
+    "weakChip": "{{count}} con señal débil (< {{dbm}} dBm)",
     "via": "vía {{name}}",
     "unknownManufacturer": "Desconocido",
     "onboarding": {
@@ -526,13 +514,6 @@
       "banner_one": "{{count}} dispositivo conectado sin identificar",
       "banner_other": "{{count}} dispositivos conectados sin identificar",
       "bannerAction": "Identificar"
-    },
-    "presence": {
-      "title": "Presencia (7 días)",
-      "empty": "Sin datos de presencia en los últimos 7 días.",
-      "online": "Conectado a {{router}}",
-      "offline": "Desconectado",
-      "flappy": "{{count}} conexiones a AP en las últimas 24 h"
     }
   },
   "home": {
@@ -544,14 +525,15 @@
     "healthAria": "{{caption}}: {{score}} de 100, {{label}}",
     "latency": "Latencia",
     "recentAlerts": {
-      "lastCheck": "Última comprobación hace 30 s",
-      "unreadOnly": "Solo no leídas",
       "allRead": "Todo en orden. No hay alertas sin leer.",
-      "recheck": "Volver a comprobar"
+      "emptyTitle": "Sin alertas",
+      "lastCheck": "Última comprobación hace 30 s",
+      "recheck": "Volver a comprobar",
+      "unreadOnly": "Solo no leídas"
     },
     "routersRow": {
       "summary": "{{online}} online · {{warnings}} con aviso",
-      "title": "Tus routers"
+      "title": "Tu flota"
     },
     "services": {
       "activePeers": "Activo · {{count}} peers",
@@ -624,6 +606,8 @@
     "settings": "Ajustes",
     "settingsDesc": "Tema, unidades e instalación",
     "theme": "Tema",
+    "themeToDark": "Cambiar a tema oscuro",
+    "themeToLight": "Cambiar a tema claro",
     "topology": "Topología",
     "topologyDesc": "Mapa visual de la red",
     "collapse": "Plegar menú",
@@ -1024,9 +1008,6 @@
     "agents": {
       "subtitle": "{{total}} agente(s) · {{down}} sin reportar",
       "empty": "Sin agentes registrados.",
-      "installChoice": "¿Cómo cubrir un router OpenWrt sin agente? NetGrip (recomendado en routers que puedan alojarlo) o agente nativo. NetPulse no instala NetGrip: la elección se hace al alta.",
-      "installChoiceNetgrip": "NetGrip: panel en el router (puerto 8090) con agente NetPulse embebido y su propia gestión (toggles de servicios). Se instala desde el propio router; luego NetPulse no despliega el agente standalone encima.",
-      "installChoiceNative": "Agente nativo: telemetría ligera gestionada desde NetPulse (reinstalar/actualizar), sin web UI en el router.",
       "colDevice": "Equipo",
       "colStatus": "Estado",
       "colLastSeen": "Último push",
@@ -1087,23 +1068,32 @@
     "noVitalsTip": "Monitorizado por SNMP o beacon: este dispositivo no reporta CPU, RAM ni temperatura"
   },
   "reports": {
-    "availability": "Disponibilidad",
-    "colAvg": "Media",
-    "colRouter": "Router",
-    "empty": "Todavía no hay datos para este período. El rollup nocturno rellena el informe cada día.",
+    "availability": "Disponibilidad por router",
+    "coverage": "{{days}}/{{total}} días con datos",
+    "downNone": "Sin huecos",
+    "downTime": "{{duration}} sin datos",
+    "downloadCsv": "Descargar como CSV",
+    "empty": "Todavía no hay datos para este período. El día en curso se mide en vivo; el histórico lo rellena el rollup nocturno.",
     "error": "No se pudo cargar el informe. Comprueba la conexión e inténtalo de nuevo.",
-    "footnote": "Disponibilidad = minutos con datos sobre el total del período. El período en curso se muestra parcial.",
-    "latency": "Latencia media",
+    "explain": "Minutos con datos recibidos de cada router durante {{window}} (resolución de 5 min). 100% significa sin huecos.",
+    "fleetAvg": "Media de la red",
+    "footnote": "Disponibilidad = minutos con datos recibidos (buckets de 5 min) sobre los días con datos de la ventana; el período en curso se muestra parcial. Un hueco suele ser el router caído, pero también puede ser el monitor sin datos. Verde: al menos 99%. Ámbar: al menos 95%. Rojo: menos del 95%, requiere atención.",
+    "insufficient": "Sin datos suficientes",
     "loading": "Cargando informe…",
     "noApi": "Disponible solo con backend en vivo.",
     "rangeLabel": "Rango a mostrar",
-    "subtitle": "Disponibilidad y rendimiento por router.",
+    "status_danger": "Necesita atención",
+    "status_ok": "Estable",
+    "status_warn": "Huecos menores",
     "tabDay": "Diario",
-    "tabWeek": "Semanal",
     "tabMonth": "Mensual",
-    "traffic": "Tráfico total (↓+↑)",
-    "upMin": "Minutos con datos",
-    "downloadCsv": "Descargar como CSV"
+    "tabWeek": "Semanal",
+    "tipToday": "Hoy, datos hasta las {{time}} (en curso)",
+    "totalDown": "Tiempo sin datos total",
+    "windowDay": "los últimos {{n}} días",
+    "windowMonth": "los últimos {{n}} meses",
+    "windowWeek": "las últimas {{n}} semanas",
+    "worstRouter": "Router con más huecos"
   },
   "topology": {
     "animateFlow": "Animar flujo de paquetes",
@@ -1233,8 +1223,7 @@
         "error": "No se pudo hacer el respaldo",
         "done": "Respaldo creado correctamente"
       },
-      "orchestration": "Orquestación de red",
-      "orchestrationDesc": "Muestra el menú de orquestación (aplicar y revertir cambios en routers). Es una superficie de escritura; se activa solo si lo quieres."
+      "orchestration": "Orquestación de red"
     },
     "adoption": {
       "title": "Adopción de agentes",
@@ -1303,7 +1292,11 @@
       "save": "Guardar",
       "saving": "Guardando…",
       "errorGeneric": "No se pudo guardar.",
-      "hint": "El modo GL.iNet inicia sesión en la interfaz del router por SSH y consulta el puerto 3000. El modo estándar conecta directamente a una instancia remota de AdGuard Home por HTTP; el puerto por defecto es 3000. La contraseña se guarda solo en el servidor."
+      "hint": "El modo GL.iNet inicia sesión en la interfaz del router por SSH y consulta el puerto 3000. El modo estándar conecta directamente a una instancia remota de AdGuard Home por HTTP; el puerto por defecto es 3000. La contraseña se guarda solo en el servidor.",
+      "detect": "Detectar",
+      "detecting": "Detectando…",
+      "detectFound": "AdGuard Home detectado en {{host}} - confirma la contraseña y guarda",
+      "detectNotFound": "No se encontró AdGuard Home ni en la puerta de enlace ni en la flota"
     },
     "appearance": "Apariencia",
     "appearanceCaption": "Se aplica al instante y se recuerda en este dispositivo",
@@ -1315,7 +1308,6 @@
       "latencyLabel": "Latencia WAN",
       "paused": "Pausado",
       "refresh": "Refresco de la interfaz",
-      "refreshNote": "Cadencia con la que la interfaz reconsulta los datos cuando pierde la conexión en tiempo real. El sondeo SSH del servidor se configura en el servidor (NETPULSE_POLL_INTERVAL, 30 s por defecto).",
       "signalCaption_one": "1 dispositivo por debajo del umbral (dispara la alerta de señal débil)",
       "signalCaption_other": "{{count}} dispositivos por debajo del umbral (dispara la alerta de señal débil)",
       "signalCaptionNone": "Ningún dispositivo por debajo del umbral",
@@ -1326,9 +1318,13 @@
       "tempLabel": "Temperatura de aviso",
       "tempNote": "El umbral de temperatura alta se configura por router en «Dispositivos» (65 °C por defecto).",
       "title": "Datos y umbrales",
-      "units": "Unidades de tráfico",
+      "units": "Tráfico",
       "unitsTitle": "Unidades de medida",
-      "tempUnit": "Unidad de temperatura",
+      "tempUnit": "Temperatura",
+      "limitHistory": "Limitar historial",
+      "limitHistoryCaption": "Poda los eventos antiguos de presencia e itinerancia",
+      "limitHistoryHint": "Activado, el servidor poda cada hora los eventos más viejos que la retención configurada. Desactivado, la retención es ilimitada (el historial crece sin poda). El intervalo de ingesta de itinerancia es independiente y siempre aplica.",
+      "limitHistoryDialog": "Límites del historial",
       "presenceRetention": "Retención del historial de presencia",
       "presenceRetentionDays": "días (0 = conservar siempre)",
       "presenceRetentionNote": "Los eventos de conexión/desconexión y roaming más antiguos se podan cada hora. El timeline de 7 días de cada cliente solo necesita una semana.",
@@ -1341,7 +1337,6 @@
       "disable": "Volver al modo live",
       "disableDesc": "El servidor se reiniciará en modo live, sondeando tus routers reales.",
       "enable": "Cargar datos de ejemplo",
-      "enableDesc": "El servidor se reiniciará y mostrará una red de ejemplo (60+ dispositivos). Tus routers no se tocan.",
       "restarting": "El servidor se está reiniciando con la red de ejemplo…",
       "title": "Modo demo"
     },
@@ -1355,27 +1350,22 @@
     "notif": {
       "badge": "Badge de avisos en la navegación",
       "badgeCaption": "Contador junto a «Alertas»",
-      "caption": "Avisos dentro de la app",
-      "note": "Son solo avisos dentro de la app. Para recibir alertas con la app cerrada, activa las «Notificaciones push».",
+      "caption": "Avisos dentro de la app y push en este dispositivo",
+      "ntfyCaption": "Notificaciones push por ntfy",
       "pulse": "Punto pulsante en equipos con aviso",
       "pulseCaption": "Dot animado en tarjetas con warn",
       "sound": "Sonido al llegar una alerta",
       "soundOff": "Desactivado",
       "soundOn": "Activado — suena un beep suave",
+      "telegramCaption": "Notificaciones al bot de Telegram",
       "testSound": "Probar beep de alerta",
-      "title": "Notificaciones visuales"
+      "title": "Notificaciones"
     },
     "push": {
       "title": "Notificaciones push",
-      "caption": "Alertas urgentes incluso con la app cerrada",
       "checking": "Comprobando soporte…",
-      "enable": "Activar",
-      "disable": "Desactivar",
-      "enabling": "Activando…",
-      "disabling": "Desactivando…",
       "stateOn": "Activadas",
-      "stateOnCaption": "Este dispositivo recibe las alertas urgentes aunque NetPulse esté cerrado.",
-      "stateOffCaption": "Recibe las alertas urgentes en este dispositivo aunque no tengas la app abierta.",
+      "stateOff": "Desactivadas",
       "denied": "Permiso denegado en el navegador. Para reactivarlo: pulsa el candado (o el icono de ajustes) de la barra de direcciones → Permisos → Notificaciones → Permitir, y recarga la página.",
       "unsupported": "Este navegador no admite notificaciones push (hacen falta Service Worker, Push API y la API de notificaciones).",
       "insecure": "Las notificaciones push necesitan HTTPS, y esta página está abierta por HTTP. Abre NetPulse en su dirección HTTPS para activarlas en este dispositivo; un administrador activa HTTPS en Ajustes > HTTPS (puerto 3443 por defecto).",
@@ -1393,7 +1383,8 @@
       "bot": "Bot",
       "chat": "Chat",
       "sendTest": "Enviar prueba",
-      "incomplete": "Completa el token del bot y el ID del chat o activa las notificaciones"
+      "incomplete": "Completa el token del bot y el ID del chat o activa las notificaciones",
+      "botTokenHint": "Crea el bot con @BotFather en Telegram y pega aquí su token."
     },
     "pwa": {
       "caption": "App instalable · PWA",
@@ -1516,7 +1507,6 @@
     },
     "labs": {
       "title": "Labs",
-      "caption": "Dispositivos externos que envían datos vía API (scrapers, switches no OpenWrt…). No se sondean por SSH.",
       "empty": "Sin dispositivos externos. Añade tu primer dispositivo.",
       "addDevice": "Añadir dispositivo externo",
       "namePlaceholder": "Nombre (será el slug del dispositivo)",
@@ -1544,15 +1534,19 @@
     },
     "saved": "Preferencias guardadas",
     "services": {
-      "title": "Servicios",
-      "caption": "Qué servicios se muestran y monitorizan",
+      "title": "Integraciones",
+      "caption": "Servicios de red visibles e integraciones activas en el servidor",
       "adguardCaption": "DNS filtrado en la puerta de enlace",
       "wireguardCaption": "Túneles VPN WireGuard",
       "openvpnCaption": "Túneles VPN OpenVPN (próximamente)",
       "labs": "Labs (aplicaciones experimentales)",
-      "labsCaption": "Activa funcionalidades en desarrollo: orquestación, scrapers y más",
+      "labsCaption": "En desarrollo. Escriben en los routers",
       "orchestrationHint": "Permite gestionar routers desde la interfaz (AdGuard, WiFi invitados, DDNS…)",
-      "note": "Solo se muestran y se monitorizan los servicios marcados. Más servicios próximamente."
+      "networkGroup": "Servicios de red",
+      "integrationsGroup": "Integraciones",
+      "proxmoxCaption": "Inventario del cluster (hipervisores y CTs)",
+      "mqttCaption": "Publicación del estado en el broker MQTT",
+      "configure": "Configurar {{name}}"
     },
     "session": {
       "active": "Sesión activa en este dispositivo",
@@ -1615,7 +1609,6 @@
       "invalid": "Introduce velocidades mayores que 0 y como máximo 100000 Mbps",
       "saveError": "No se pudo guardar la velocidad",
       "runTest": "Hacer test de velocidad",
-      "testCaption": "Mide la velocidad real desde el servidor y rellena los campos con el resultado. Luego pulsa Guardar.",
       "testApplied": "Medición aplicada: {{down}} ↓ / {{up}} ↑ Mbps",
       "testFailed": "El test de velocidad falló",
       "testHint": "El test satura el enlace unos segundos. Puedes dejar la página; al terminar se rellenan los campos.",
@@ -1625,22 +1618,18 @@
     },
     "knownMacs": {
       "title": "Dispositivos de confianza",
-      "caption": "La MAC no se avisa como «dispositivo desconocido» y su nombre se usa como alias",
-      "hint": "Dispositivos propios (routers, TV, básculas…) que entran y salen de la red con normalidad. Al marcarlos aquí dejan de generar alertas de desconocido.",
-      "empty": "Sin dispositivos de confianza todavía. Añade uno con el botón «Añadir».",
       "add": "Añadir",
       "adding": "Añadiendo…",
       "mac": "Dirección MAC",
       "macPlaceholder": "AA:BB:CC:DD:EE:FF",
       "name": "Nombre (alias)",
       "namePlaceholder": "p. ej. Báscula Withings",
-      "save": "Guardar",
-      "saving": "Guardando…",
       "delete": "Quitar",
       "invalidMac": "Dirección MAC inválida (formato AA:BB:CC:DD:EE:FF)",
       "saveError": "No se pudo guardar el dispositivo",
       "deleteError": "No se pudo quitar el dispositivo",
-      "loadError": "No se pudieron cargar los dispositivos de confianza"
+      "loadError": "No se pudieron cargar los dispositivos de confianza",
+      "info": "Las MACs de confianza no avisan como «dispositivo desconocido» y su nombre se usa como alias en la red."
     },
     "palette": "Paleta",
     "paletteCaption": "La paleta cambia todos los colores de la interfaz. El acento solo cambia el color principal.",
@@ -1650,8 +1639,18 @@
     "paletteElectric": "Electrico",
     "speedtest": {
       "title": "Test de velocidad WAN",
-      "caption": "Medición periódica real desde el servidor contra speedtest.net",
+      "caption": "Medición periódica real desde el servidor",
       "enabled": "Test periódico activado",
+      "provider": "Proveedor del test",
+      "providerHint": "Método de medición. Speedtest.net usa la red de servidores de Ookla; Cloudflare mide contra speed.cloudflare.com por HTTP; LibreSpeed usa una instancia propia o pública (necesitas su URL); Personalizado mide contra la URL que indiques (debe aceptar GET para bajada y POST para subida). Prueba otro si el resultado por defecto no se parece a tu línea.",
+      "providerOokla": "Speedtest.net (Ookla)",
+      "providerCloudflare": "Cloudflare",
+      "providerLibrespeed": "LibreSpeed",
+      "providerCustom": "Personalizado",
+      "librespeedUrl": "URL de la instancia LibreSpeed",
+      "librespeedPlaceholder": "https://librespeed.example.com",
+      "customUrl": "URL del endpoint de medición",
+      "customPlaceholder": "https://mi-servidor/endpoint",
       "interval": "Intervalo",
       "intervalH": "cada {{hours}} h",
       "intervalWeek": "cada semana",
@@ -1688,12 +1687,12 @@
       "originAuto": "Auto",
       "originManual": "Manual",
       "colServer": "Servidor",
-      "noRecent": "Aún no hay tests registrados"
+      "noRecent": "Aún no hay tests registrados",
+      "recentHide": "Ocultar"
     },
     "proxmox": {
       "title": "Proxmox VE",
       "caption": "Inventario del cluster para identificar hosts y sus contenedores",
-      "hint": "Conecta con la API de solo lectura del cluster Proxmox (token con permisos Sys.Audit y VM.Audit). El inventario sella el host como hipervisor y sus CTs/VMs como contenedores colgados de él en Dispositivos, con nombres e IPs reales. Crea el token en Datacenter > Permisos > API Tokens.",
       "configured": "Configurado",
       "notConfigured": "Sin configurar",
       "edit": "Editar configuración de Proxmox",
@@ -1711,7 +1710,8 @@
       "instanceId": "Identificador (slug, no editable luego)",
       "test": "Probar",
       "testOk": "Conectado: Proxmox {{version}} · {{nodes}} nodo(s), {{vms}} VM(s), {{cts}} CT(s)",
-      "testLimited": "El token autentica pero no ve ningún invitado: Proxmox devuelve las listas vacías cuando al token le faltan permisos de auditoría. Dale PVEAuditor en \"/\" — en el host Proxmox: pveum acl modify / --tokens 'USUARIO@REALM!TOKEN' --roles PVEAuditor. Un token con separación de privilegios necesita el permiso él mismo, no basta con el de su usuario."
+      "testLimited": "El token autentica pero no ve ningún invitado: Proxmox devuelve las listas vacías cuando al token le faltan permisos de auditoría. Dale PVEAuditor en \"/\" — en el host Proxmox: pveum acl modify / --tokens 'USUARIO@REALM!TOKEN' --roles PVEAuditor. Un token con separación de privilegios necesita el permiso él mismo, no basta con el de su usuario.",
+      "hintShort": "API de solo lectura: el token necesita los permisos Sys.Audit y VM.Audit. Los pasos para crearlo están en la página de Ayuda."
     },
     "sections": {
       "personalization": "Configuración",
@@ -1782,16 +1782,17 @@
     },
     "alertsLang": {
       "title": "Idioma de las notificaciones",
-      "description": "Idioma en que se envían los avisos de ntfy, Telegram y webhook (las alertas se componen en español y se traducen al publicar).",
-      "label": "Idioma de los avisos"
+      "description": "Idioma en que se envían los avisos de ntfy, Telegram y webhook (las alertas se componen en español y se traducen al publicar)."
     },
-        "https": {
+    "https": {
       "title": "HTTPS",
-      "caption": "Sirve NetPulse por HTTPS con su propia autoridad de certificación y retira el HTTP plano paso a paso.",
       "loadError": "No se pudieron cargar los ajustes de HTTPS.",
       "unavailable": "HTTPS se gestiona fuera de esta página: {{reason}}.",
-      "enabled": "HTTPS en el puerto {{port}}",
+      "enabled": "HTTPS",
       "enabledHint": "Solo añade el puerto HTTPS. El HTTP plano sigue funcionando hasta que elijas un modo más estricto abajo.",
+      "portTitle": "Puerto",
+      "portHint": "Se aplica al momento, sin reiniciar. Los agentes y NetGrip que apuntan al puerto actual deben actualizar su URL.",
+      "portApply": "Cambiar",
       "locked": "Fijado en el archivo de entorno del servidor; cámbialo allí.",
       "rootTitle": "Certificado raíz",
       "rootHint": "Instálalo una vez en cada móvil y ordenador desde el que uses NetPulse. Antes de confiar en él, comprueba que la huella que muestra tu dispositivo coincide con esta y con la del log del servidor.",
@@ -1804,15 +1805,15 @@
       "modes": {
         "full": {
           "title": "Todo (como antes)",
-          "hint": "El HTTP plano lo sirve todo. Seguro mientras instalas el certificado raíz y mueves los agentes."
+          "hint": "El HTTP plano lo sirve todo, como hasta ahora."
         },
         "migrate": {
           "title": "Solo agentes",
-          "hint": "Los navegadores van a HTTPS; los inicios de sesión y las llamadas a la API por HTTP plano se rechazan. Los agentes siguen reportando por HTTP plano hasta que cada uno se mueva."
+          "hint": "Los navegadores van a HTTPS; los agentes siguen por HTTP hasta moverlos."
         },
         "redirect": {
           "title": "Nada",
-          "hint": "El HTTP plano solo redirige a HTTPS y entrega el certificado raíz. Los agentes que sigan en HTTP plano dejan de reportar."
+          "hint": "El HTTP plano solo redirige a HTTPS; los agentes que sigan en HTTP dejan de reportar."
         }
       },
       "agentsOnHttp": "Siguen reportando por HTTP plano",
@@ -1842,7 +1843,6 @@
   "topbar": {
     "alertsUnread": "Alertas, {{count}} sin leer",
     "demoMode": "Modo demo",
-    "gatewayStatus": "Estado de la puerta de enlace",
     "live": "En vivo",
     "networkHealth": "Salud de la red: {{score}}",
     "networkHealth100": "Salud de la red: {{score}} de 100",
@@ -1913,7 +1913,12 @@
       "viewCompare": "Ver la comparación completa en GitHub",
       "changelogFallback": "No se ha podido cargar el changelog.",
       "changelogLink": "Ver notas del release en GitHub",
-      "downNotice": "El servicio estará caído mientras se reinicia"
+      "downNotice": "El servicio estará caído mientras se reinicia",
+      "versionUpdate": "Actualización de versión",
+      "eta": "Tiempo estimado: 2-5 minutos",
+      "backupNote": "Se creará una copia de seguridad automática antes de actualizar",
+      "prerequisites": "Prerrequisitos",
+      "ack": "Entiendo que el servicio quedará no disponible brevemente durante la actualización"
     },
     "errors": {
       "exitRestart": "El servidor se reinició para aplicar la actualización (el paso final normal). Si en unos minutos la versión no ha cambiado, vuelve a comprobar actualizaciones.",
@@ -2348,6 +2353,18 @@
           "Sigue el progreso desde la misma página; el resultado definitivo llega cuando el router termina de arrancar."
         ],
         "tip": "Tras un flash solo sobrevive lo de /etc: el self-heal del agente restaura el binario al arrancar, y ⟦Reinstalar⟧ lo deja todo fresco si hiciera falta."
+      },
+      "proxmoxToken": {
+        "title": "Conectar un cluster Proxmox",
+        "subtitle": "Crear el token de API de solo lectura que pide la integración",
+        "intro": "La integración de Proxmox sella cada host como hipervisor y cuelga sus CTs y VMs de él en ⟦Dispositivos⟧, con nombres e IPs reales. Solo necesita lectura: un token de API con permisos de auditoría.",
+        "steps": [
+          "En la web de Proxmox ve a ⟦Datacenter⟧ → ⟦Permisos⟧ → ⟦API Tokens⟧ y crea un token para el usuario que prefieras (p. ej. root@pam!netpulse).",
+          "Dale permisos de auditoría: en ⟦Permisos⟧ → ⟦Añadir⟧ asigna el rol PVEAuditor sobre la ruta / al token (si el token tiene separación de privilegios, el permiso tiene que ser del propio token, no basta con el de su usuario).",
+          "En NetPulse abre ⟦Ajustes⟧ → ⟦Servicios⟧ y pulsa el icono de configuración de ⟦Proxmox VE⟧: añade la URL del cluster (https://host:8006), el Token ID (usuario@realm!nombre) y el Secret.",
+          "Pulsa ⟦Probar⟧: si el token autentica pero no ve invitados, le faltan los permisos del paso 2."
+        ],
+        "tip": "El secret solo se envía una vez y no vuelve del servidor: para cambiarlo, edita la instancia y escribe el nuevo."
       }
     }
   },

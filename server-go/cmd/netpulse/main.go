@@ -392,10 +392,18 @@ func run() error {
 			chain = append(chain, urgencyGate{n: webhookNotifier, kv: kv, key: "webhook.urgent_only"})
 		}
 		if telegramNotifier != nil {
-			chain = append(chain, urgencyGate{n: telegramNotifier, kv: kv, key: "telegram.urgent_only"})
+			chain = append(chain, integrationGate{
+				n:   urgencyGate{n: telegramNotifier, kv: kv, key: "telegram.urgent_only"},
+				kv:  kv,
+				key: "settings.integrations.telegram",
+			})
 		}
 		if ntfyNotifier != nil {
-			chain = append(chain, urgencyGate{n: ntfyNotifier, kv: kv, key: "ntfy.urgent_only"})
+			chain = append(chain, integrationGate{
+				n:   urgencyGate{n: ntfyNotifier, kv: kv, key: "ntfy.urgent_only"},
+				kv:  kv,
+				key: "settings.integrations.ntfy",
+			})
 		}
 		notifyChain = chain
 	}
@@ -587,6 +595,8 @@ func run() error {
 		DB:          dbHandle,
 		DataDir:     cfg.DataDir,
 		Port:        cfg.TLSPort,
+		EnvPort:     cfg.TLSPortSet,
+		PlainPort:   cfg.Port,
 		Names:       cfg.TLSNames,
 		PublicURL:   cfg.PublicURL,
 		EnvEnabled:  tlsEnvEnabled,
@@ -650,13 +660,18 @@ func run() error {
 
 	// Retención de eventos de presencia/roaming (#771): poda horaria de
 	// device_events y roam_events según presence.retention_days (kv; 0 =
-	// conservar siempre). Sin esto ambas tablas crecen sin límite.
+	// conservar siempre). Sin esto ambas tablas crecen sin límite. El
+	// interruptor maestro history.limit_enabled (#975) desactiva la poda
+	// por completo (retención ilimitada).
 	presenceStop := make(chan struct{})
 	if !cfg.DemoMode {
 		go func() {
 			tick := time.NewTicker(time.Hour)
 			defer tick.Stop()
 			prune := func() {
+				if !httpapi.HistoryLimitEnabled(dbHandle.DB) {
+					return
+				}
 				retention := httpapi.PresenceRetentionDays(dbHandle.DB)
 				if retention <= 0 {
 					return
@@ -881,6 +896,23 @@ func (g urgencyGate) Notify(ev alerts.AlertEvent) {
 		if v, ok := g.kv.Get(g.key); ok && v == "false" {
 			g.n.Notify(ev)
 		}
+		return
+	}
+	g.n.Notify(ev)
+}
+
+// integrationGate implementa alerts.Notifier descartando TODOS los eventos
+// de un canal cuando su integración está desactivada en Ajustes (#968,
+// settings.integrations.<canal> = "false"). Ausente = activo. La lectura es
+// por evento (patrón urgencyGate): el toggle aplica sin reiniciar.
+type integrationGate struct {
+	n   alerts.Notifier
+	kv  *mainKVAdapter
+	key string
+}
+
+func (g integrationGate) Notify(ev alerts.AlertEvent) {
+	if v, ok := g.kv.Get(g.key); ok && v == "false" {
 		return
 	}
 	g.n.Notify(ev)

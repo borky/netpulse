@@ -1,6 +1,5 @@
 {
   "alerts": {
-    "allKinds": "All types",
     "allRead": "All read — the network is quiet",
     "chipCritical": "critical",
     "chipCriticalCaption": "There has never been a critical one. Touch wood.",
@@ -16,15 +15,7 @@
     "emptyTitle": "Total silence",
     "eventCount_one": "1 event",
     "eventCount_other": "{{count}} alerts",
-    "filterByKind": "Filter by type",
     "filterBySeverity": "Filter by severity",
-    "kinds": {
-      "adguard": "AdGuard",
-      "dispositivos": "Devices",
-      "router": "Router",
-      "sistema": "System",
-      "wireguard": "WireGuard"
-    },
     "loadingOld": "Loading older alerts…",
     "markAllRead": "Mark all as read",
     "moreActions": "More actions",
@@ -372,9 +363,9 @@
       "vm": "VM",
       "vmTip": "Virtual machine on {{host}}"
     },
-    "bandAll": "All",
     "changeView": "Change view",
     "clearFilters": "Clear filters",
+    "connection": "Connection",
     "colBand": "Band",
     "colDevice": "Device",
     "colFirstSeen": "First seen",
@@ -382,6 +373,10 @@
     "colSignal": "Signal",
     "colTraffic": "Traffic",
     "colType": "Type",
+    "columns": {
+      "action": "Show or hide columns",
+      "title": "Columns"
+    },
     "copyIp": "Copy IP",
     "detail": {
       "dhcpLease": "DHCP lease",
@@ -390,12 +385,6 @@
       "infra": "Infrastructure",
       "manufacturer": "Manufacturer (OUI)",
       "protected": "Protected",
-      "rename": "Rename device",
-      "renameLocal": "Only saved in this browser.",
-      "traffic24h": "Traffic 24 h",
-      "trafficCurrent": "Current traffic",
-      "traffic": "Client traffic",
-      "trafficNoSource": "No per-client traffic: wired clients need nlbwmon on the router (WiFi uses hostapd counters).",
       "unfiltered": "Unfiltered",
       "connectedTo": "Connected to"
     },
@@ -404,6 +393,7 @@
     "emptyTitle": "Nothing here",
     "filterByBand": "Filter by band",
     "filterByRouter": "Filter by router",
+    "fleet": "Fleet",
     "gridView": "Grid view",
     "groups": {
       "infra": "Infra",
@@ -425,7 +415,6 @@
     "leaseUnlimited": "unlimited",
     "edit": {
       "title": "Edit device",
-      "description": "Change this device's name and icon.",
       "action": "Edit",
       "name": "Name",
       "nameHint": "Empty = automatic name (DHCP hostname)",
@@ -466,7 +455,6 @@
     "onlineOffline": "Offline",
     "filterByOnline": "Filter by status",
     "removeFilter": "Remove filter {{label}}",
-    "routerAll": "All",
     "searchAria": "Search devices",
     "searchPlaceholder": "Search by name, IP or MAC…",
     "showing": "Showing",
@@ -504,7 +492,7 @@
       "tv": "TV"
     },
     "wiredConnection": "Wired connection",
-    "weakChip": "{{count}} with weak signal",
+    "weakChip": "{{count}} with weak signal (< {{dbm}} dBm)",
     "via": "via {{name}}",
     "unknownManufacturer": "Unknown",
     "onboarding": {
@@ -526,13 +514,6 @@
       "banner_one": "{{count}} connected device not identified",
       "banner_other": "{{count}} connected devices not identified",
       "bannerAction": "Identify"
-    },
-    "presence": {
-      "title": "Presence (7 days)",
-      "empty": "No presence data for the last 7 days.",
-      "online": "Connected to {{router}}",
-      "offline": "Disconnected",
-      "flappy": "{{count}} AP connections in the last 24 h"
     }
   },
   "home": {
@@ -544,14 +525,15 @@
     "healthAria": "{{caption}}: {{score}} of 100, {{label}}",
     "latency": "Latency",
     "recentAlerts": {
-      "lastCheck": "Last check 30s ago",
-      "unreadOnly": "Unread only",
       "allRead": "All caught up. No unread alerts.",
-      "recheck": "Check again"
+      "emptyTitle": "No alerts",
+      "lastCheck": "Last check 30s ago",
+      "recheck": "Check again",
+      "unreadOnly": "Unread only"
     },
     "routersRow": {
       "summary": "{{online}} online · {{warnings}} with warnings",
-      "title": "Your routers"
+      "title": "Your fleet"
     },
     "services": {
       "activePeers": "Active · {{count}} peers",
@@ -624,6 +606,8 @@
     "settings": "Settings",
     "settingsDesc": "Theme, units and installation",
     "theme": "Theme",
+    "themeToDark": "Switch to dark theme",
+    "themeToLight": "Switch to light theme",
     "topology": "Topology",
     "topologyDesc": "Visual network map",
     "collapse": "Collapse menu",
@@ -1024,9 +1008,6 @@
     "agents": {
       "subtitle": "{{total}} agent(s) · {{down}} not reporting",
       "empty": "No registered agents.",
-      "installChoice": "How to cover an OpenWrt router without an agent? NetGrip (recommended on routers that can host it) or the native agent. NetPulse does not install NetGrip: the choice happens at onboarding.",
-      "installChoiceNetgrip": "NetGrip: panel on the router (port 8090) with an embedded NetPulse agent and its own management (service toggles). Install it from the router itself; NetPulse then does not deploy the standalone agent over it.",
-      "installChoiceNative": "Native agent: lightweight telemetry managed from NetPulse (reinstall/upgrade), no web UI on the router.",
       "colDevice": "Device",
       "colStatus": "Status",
       "colLastSeen": "Last push",
@@ -1087,23 +1068,32 @@
     "noVitalsTip": "Monitored through SNMP or a beacon: this device does not report CPU, RAM or temperature"
   },
   "reports": {
-    "availability": "Availability",
-    "colAvg": "Average",
-    "colRouter": "Router",
-    "empty": "No data for this period yet. The nightly rollup populates the report each day.",
+    "availability": "Availability per router",
+    "coverage": "{{days}}/{{total}} days with data",
+    "downNone": "No gaps",
+    "downTime": "{{duration}} with no data",
+    "downloadCsv": "Download as CSV",
+    "empty": "No data for this period yet. Today is measured live; history is filled in by the nightly rollup.",
     "error": "Could not load the report. Check the connection and try again.",
-    "footnote": "Availability = minutes with data over the period total. The current period is shown as partial.",
-    "latency": "Average latency",
+    "explain": "Minutes with data received from each router during {{window}} (5-minute resolution). 100% means no gaps.",
+    "fleetAvg": "Fleet average",
+    "footnote": "Availability = minutes with data received (5-minute buckets) over the days with data in the window; the current period is shown as partial. A gap usually means the router was down, but it can also mean the monitor had no data. Green: at least 99%. Amber: at least 95%. Red: below 95%, needs attention.",
+    "insufficient": "Not enough data",
     "loading": "Loading report…",
     "noApi": "Available only with a live backend.",
     "rangeLabel": "Range to show",
-    "subtitle": "Availability and performance per router.",
+    "status_danger": "Needs attention",
+    "status_ok": "Stable",
+    "status_warn": "Minor gaps",
     "tabDay": "Daily",
-    "tabWeek": "Weekly",
     "tabMonth": "Monthly",
-    "traffic": "Total traffic (↓+↑)",
-    "upMin": "Minutes with data",
-    "downloadCsv": "Download as CSV"
+    "tabWeek": "Weekly",
+    "tipToday": "Today, data up to {{time}} (in progress)",
+    "totalDown": "Total time without data",
+    "windowDay": "the last {{n}} days",
+    "windowMonth": "the last {{n}} months",
+    "windowWeek": "the last {{n}} weeks",
+    "worstRouter": "Router with most gaps"
   },
   "topology": {
     "animateFlow": "Animate packet flow",
@@ -1233,8 +1223,7 @@
         "error": "Could not create backup",
         "done": "Backup created successfully"
       },
-      "orchestration": "Network orchestration",
-      "orchestrationDesc": "Shows the orchestration menu (apply and roll back changes on routers). It is a write surface, so it is off until you enable it."
+      "orchestration": "Network orchestration"
     },
     "adoption": {
       "title": "Agent adoption",
@@ -1303,7 +1292,11 @@
       "save": "Save",
       "saving": "Saving…",
       "errorGeneric": "Could not save.",
-      "hint": "GL.iNet mode logs into the router UI through SSH and queries port 3000. Standard mode connects directly to a remote AdGuard Home instance over HTTP; the default port is 3000. The password is stored only on the server."
+      "hint": "GL.iNet mode logs into the router UI through SSH and queries port 3000. Standard mode connects directly to a remote AdGuard Home instance over HTTP; the default port is 3000. The password is stored only on the server.",
+      "detect": "Detect",
+      "detecting": "Detecting…",
+      "detectFound": "AdGuard Home detected at {{host}} - confirm the password and save",
+      "detectNotFound": "AdGuard Home was not found on the gateway or the fleet"
     },
     "appearance": "Appearance",
     "appearanceCaption": "Applies instantly and is remembered on this device",
@@ -1315,7 +1308,6 @@
       "latencyLabel": "WAN latency",
       "paused": "Paused",
       "refresh": "Interface refresh",
-      "refreshNote": "How often the interface re-fetches data when it loses the realtime connection. The server's SSH polling is configured on the server (NETPULSE_POLL_INTERVAL, 30 s by default).",
       "signalCaption_one": "1 device below the threshold (drives the weak-signal alert)",
       "signalCaption_other": "{{count}} devices below the threshold (drives the weak-signal alert)",
       "signalCaptionNone": "No devices below the threshold",
@@ -1326,9 +1318,13 @@
       "tempLabel": "Warning temperature",
       "tempNote": "The high-temperature threshold is set per router in \"Devices\" (65 °C by default).",
       "title": "Data & thresholds",
-      "units": "Traffic units",
+      "units": "Traffic",
       "unitsTitle": "Measurement units",
-      "tempUnit": "Temperature unit",
+      "tempUnit": "Temperature",
+      "limitHistory": "Limit history",
+      "limitHistoryCaption": "Prunes old presence and roaming events",
+      "limitHistoryHint": "When on, the server prunes events older than the configured retention every hour. When off, retention is unlimited (the history grows unpruned). The roaming ingest interval is independent and always applies.",
+      "limitHistoryDialog": "History limits",
       "presenceRetention": "Presence history retention",
       "presenceRetentionDays": "days (0 = keep forever)",
       "presenceRetentionNote": "Connect/disconnect and AP-roaming events older than this are pruned hourly. The 7-day client timeline only needs a week.",
@@ -1341,7 +1337,6 @@
       "disable": "Back to live mode",
       "disableDesc": "The server will restart in live mode, polling your real routers.",
       "enable": "Load sample data",
-      "enableDesc": "The server will restart and show a sample network (60+ devices). Your routers are untouched.",
       "restarting": "The server is restarting with the sample network…",
       "title": "Demo mode"
     },
@@ -1355,27 +1350,22 @@
     "notif": {
       "badge": "Alerts badge in the navigation",
       "badgeCaption": "Counter next to \"Alerts\"",
-      "caption": "In-app notices",
-      "note": "These are only in-app notices. To get alerts when the app is closed, enable “Push notifications”.",
+      "caption": "In-app notices and push on this device",
+      "ntfyCaption": "Push notifications via ntfy",
       "pulse": "Pulsing dot on devices with warnings",
       "pulseCaption": "Animated dot on cards with warn",
       "sound": "Sound when an alert arrives",
       "soundOff": "Off",
       "soundOn": "On — plays a soft beep",
+      "telegramCaption": "Notifications to the Telegram bot",
       "testSound": "Test alert beep",
-      "title": "Visual notifications"
+      "title": "Notifications"
     },
     "push": {
       "title": "Push notifications",
-      "caption": "Urgent alerts even when the app is closed",
       "checking": "Checking support…",
-      "enable": "Enable",
-      "disable": "Disable",
-      "enabling": "Enabling…",
-      "disabling": "Disabling…",
       "stateOn": "Enabled",
-      "stateOnCaption": "This device receives urgent alerts even when NetPulse is closed.",
-      "stateOffCaption": "Get urgent alerts on this device even when the app is not open.",
+      "stateOff": "Disabled",
       "denied": "Permission denied in the browser. To re-enable it: click the lock (or tune) icon in the address bar → Permissions → Notifications → Allow, then reload the page.",
       "unsupported": "This browser does not support push notifications (it needs Service Worker, the Push API and the Notifications API).",
       "insecure": "Push notifications need HTTPS, and this page is open over plain HTTP. Open NetPulse at its HTTPS address to enable them on this device - an admin turns HTTPS on in Settings > HTTPS (port 3443 by default).",
@@ -1393,7 +1383,8 @@
       "bot": "Bot",
       "chat": "Chat",
       "sendTest": "Send test",
-      "incomplete": "Fill in the bot token and chat ID or enable notifications"
+      "incomplete": "Fill in the bot token and chat ID or enable notifications",
+      "botTokenHint": "Create the bot with @BotFather on Telegram and paste its token here."
     },
     "pwa": {
       "caption": "Installable app · PWA",
@@ -1516,7 +1507,6 @@
     },
     "labs": {
       "title": "Labs",
-      "caption": "External devices that push data via API (scrapers, non-OpenWrt switches…). Not polled via SSH.",
       "empty": "No external devices yet. Add your first device.",
       "addDevice": "Add external device",
       "namePlaceholder": "Name (becomes the device slug)",
@@ -1544,15 +1534,19 @@
     },
     "saved": "Preferences saved",
     "services": {
-      "title": "Services",
-      "caption": "Which services are shown and monitored",
+      "title": "Integrations",
+      "caption": "Visible network services and active server integrations",
       "adguardCaption": "Filtered DNS on the gateway",
       "wireguardCaption": "WireGuard VPN tunnels",
       "openvpnCaption": "OpenVPN tunnels (coming soon)",
       "labs": "Labs (experimental features)",
-      "labsCaption": "Enable features in development: orchestration, scrapers, and more",
+      "labsCaption": "In development. They write to your routers",
       "orchestrationHint": "Manage routers from the UI (AdGuard, guest Wi-Fi, DDNS…)",
-      "note": "Only checked services are shown and monitored. More services coming soon."
+      "networkGroup": "Network services",
+      "integrationsGroup": "Integrations",
+      "proxmoxCaption": "Cluster inventory (hypervisors and CTs)",
+      "mqttCaption": "Fleet state published to the MQTT broker",
+      "configure": "Configure {{name}}"
     },
     "session": {
       "active": "Active session on this device",
@@ -1615,7 +1609,6 @@
       "invalid": "Enter speeds greater than 0 and at most 100000 Mbps",
       "saveError": "Could not save the speed",
       "runTest": "Run speed test",
-      "testCaption": "Measures the real speed from the server and fills the fields with the result. Then press Save.",
       "testApplied": "Measurement applied: {{down}} ↓ / {{up}} ↑ Mbps",
       "testFailed": "The speed test failed",
       "testHint": "The test saturates the link for a few seconds. You can leave this page; fields are filled when it finishes.",
@@ -1625,22 +1618,18 @@
     },
     "knownMacs": {
       "title": "Trusted devices",
-      "caption": "The MAC no longer warns as an 'unknown device' and its name is used as an alias",
-      "hint": "Devices you own (routers, TVs, scales…) that come and go normally. Marking them here stops unknown-device alerts.",
-      "empty": "No trusted devices yet. Add one with the 'Add' button.",
       "add": "Add",
       "adding": "Adding…",
       "mac": "MAC address",
       "macPlaceholder": "AA:BB:CC:DD:EE:FF",
       "name": "Name (alias)",
       "namePlaceholder": "e.g. Withings scale",
-      "save": "Save",
-      "saving": "Saving…",
       "delete": "Remove",
       "invalidMac": "Invalid MAC address (format AA:BB:CC:DD:EE:FF)",
       "saveError": "Could not save the device",
       "deleteError": "Could not remove the device",
-      "loadError": "Could not load trusted devices"
+      "loadError": "Could not load trusted devices",
+      "info": "Trusted MACs do not raise \"unknown device\" alerts and their name is used as an alias on the network."
     },
     "palette": "Palette",
     "paletteCaption": "Palette changes all interface colors. Accent only changes the primary color.",
@@ -1650,8 +1639,18 @@
     "paletteElectric": "Electric",
     "speedtest": {
       "title": "WAN speed test",
-      "caption": "Real periodic measurement from the server against speedtest.net",
+      "caption": "Real periodic measurement from the server",
       "enabled": "Periodic test enabled",
+      "provider": "Test provider",
+      "providerHint": "Measurement method. Speedtest.net uses the Ookla server network; Cloudflare measures over HTTP against speed.cloudflare.com; LibreSpeed uses your own or a public instance (you need its URL); Custom measures against the URL you provide (it must accept GET for download and POST for upload). Try another one if the default result does not match your line.",
+      "providerOokla": "Speedtest.net (Ookla)",
+      "providerCloudflare": "Cloudflare",
+      "providerLibrespeed": "LibreSpeed",
+      "providerCustom": "Custom",
+      "librespeedUrl": "LibreSpeed instance URL",
+      "librespeedPlaceholder": "https://librespeed.example.com",
+      "customUrl": "Measurement endpoint URL",
+      "customPlaceholder": "https://my-server/endpoint",
       "interval": "Interval",
       "intervalH": "every {{hours}} h",
       "intervalWeek": "every week",
@@ -1688,12 +1687,12 @@
       "originAuto": "Auto",
       "originManual": "Manual",
       "colServer": "Server",
-      "noRecent": "No tests recorded yet"
+      "noRecent": "No tests recorded yet",
+      "recentHide": "Hide"
     },
     "proxmox": {
       "title": "Proxmox VE",
       "caption": "Cluster inventory to identify hosts and their containers",
-      "hint": "Connects to the Proxmox cluster read-only API (token with Sys.Audit and VM.Audit privileges). The inventory seals the host as hypervisor and its CTs/VMs as containers attached to it in Devices, with real names and IPs. Create the token in Datacenter > Permissions > API Tokens.",
       "configured": "Configured",
       "notConfigured": "Not configured",
       "edit": "Edit Proxmox configuration",
@@ -1711,7 +1710,8 @@
       "instanceId": "Identifier (slug, not editable later)",
       "test": "Test",
       "testOk": "Connected: Proxmox {{version}} · {{nodes}} node(s), {{vms}} VM(s), {{cts}} CT(s)",
-      "testLimited": "The token authenticates but cannot see any guest: Proxmox returns the lists empty when the token lacks audit rights. Grant it PVEAuditor on \"/\" — on the Proxmox host: pveum acl modify / --tokens 'USER@REALM!TOKEN' --roles PVEAuditor. A token with privilege separation needs the permission itself, not just its user."
+      "testLimited": "The token authenticates but cannot see any guest: Proxmox returns the lists empty when the token lacks audit rights. Grant it PVEAuditor on \"/\" — on the Proxmox host: pveum acl modify / --tokens 'USER@REALM!TOKEN' --roles PVEAuditor. A token with privilege separation needs the permission itself, not just its user.",
+      "hintShort": "Read-only API: the token needs the Sys.Audit and VM.Audit permissions. The steps to create it are on the Help page."
     },
     "sections": {
       "personalization": "Configuration",
@@ -1782,16 +1782,17 @@
     },
     "alertsLang": {
       "title": "Notification language",
-      "description": "Language used for ntfy, Telegram and webhook alerts (alerts are composed in Spanish and translated when published).",
-      "label": "Alert language"
+      "description": "Language used for ntfy, Telegram and webhook alerts (alerts are composed in Spanish and translated when published)."
     },
-        "https": {
+    "https": {
       "title": "HTTPS",
-      "caption": "Serve NetPulse over HTTPS with its own certificate authority, and retire plain HTTP step by step.",
       "loadError": "Could not load the HTTPS settings.",
       "unavailable": "HTTPS is managed outside this page: {{reason}}.",
-      "enabled": "HTTPS on port {{port}}",
+      "enabled": "HTTPS",
       "enabledHint": "Only adds the HTTPS port. Plain HTTP keeps working until you choose a stricter mode below.",
+      "portTitle": "Port",
+      "portHint": "Applies at once, no restart. Agents and NetGrip pointing at the current port must update their URL.",
+      "portApply": "Change",
       "locked": "Fixed in the server's environment file; change it there.",
       "rootTitle": "Root certificate",
       "rootHint": "Install it once on each phone and computer you use NetPulse from. Before trusting it, check that the fingerprint your device shows matches this one, and the one in the server's log.",
@@ -1804,15 +1805,15 @@
       "modes": {
         "full": {
           "title": "Everything (as before)",
-          "hint": "Plain HTTP serves everything. Safe while you install the root certificate and move agents."
+          "hint": "Plain HTTP serves everything, as before."
         },
         "migrate": {
           "title": "Agents only",
-          "hint": "Browsers are sent to HTTPS; sign-ins and API calls over plain HTTP are refused. Agents keep reporting over plain HTTP until each one has moved."
+          "hint": "Browsers go to HTTPS; agents keep reporting over HTTP until moved."
         },
         "redirect": {
           "title": "Nothing",
-          "hint": "Plain HTTP only redirects to HTTPS and hands out the root certificate. Agents still on plain HTTP stop reporting."
+          "hint": "Plain HTTP only redirects to HTTPS; agents still on HTTP stop reporting."
         }
       },
       "agentsOnHttp": "Still reporting over plain HTTP",
@@ -1842,7 +1843,6 @@
   "topbar": {
     "alertsUnread": "Alerts, {{count}} unread",
     "demoMode": "Demo mode",
-    "gatewayStatus": "Gateway status",
     "live": "Live",
     "networkHealth": "Network health: {{score}}",
     "networkHealth100": "Network health: {{score}} of 100",
@@ -1913,7 +1913,12 @@
       "viewCompare": "View the full comparison on GitHub",
       "changelogFallback": "Could not load changelog.",
       "changelogLink": "View release notes on GitHub",
-      "downNotice": "The service will be down while it restarts"
+      "downNotice": "The service will be down while it restarts",
+      "versionUpdate": "Version update",
+      "eta": "Estimated time: 2-5 minutes",
+      "backupNote": "A backup will be created automatically before the update",
+      "prerequisites": "Prerequisites",
+      "ack": "I understand the service will be briefly unavailable during the update"
     },
     "errors": {
       "exitRestart": "The server restarted itself to apply the update (the normal final step). If the version has not changed in a few minutes, check for updates again.",
@@ -2348,6 +2353,18 @@
           "Follow the progress on the same page; the final result lands when the router finishes booting."
         ],
         "tip": "After a flash only /etc survives: the agent's self-heal restores the binary at boot, and ⟦Reinstall⟧ puts everything fresh if needed."
+      },
+      "proxmoxToken": {
+        "title": "Connect a Proxmox cluster",
+        "subtitle": "Create the read-only API token the integration asks for",
+        "intro": "The Proxmox integration seals each host as a hypervisor and hangs its CTs and VMs under it in ⟦Devices⟧, with real names and IPs. It only needs read access: an API token with audit permissions.",
+        "steps": [
+          "In the Proxmox web UI go to ⟦Datacenter⟧ → ⟦Permissions⟧ → ⟦API Tokens⟧ and create a token for the user of your choice (e.g. root@pam!netpulse).",
+          "Grant audit permissions: under ⟦Permissions⟧ → ⟦Add⟧ assign the PVEAuditor role on path / to the token (if the token has privilege separation, the permission must belong to the token itself - the user's own is not enough).",
+          "In NetPulse open ⟦Settings⟧ → ⟦Services⟧ and click the configure icon of ⟦Proxmox VE⟧: add the cluster URL (https://host:8006), the Token ID (user@realm!name) and the Secret.",
+          "Click ⟦Test⟧: if the token authenticates but sees no guests, it is missing the permissions from step 2."
+        ],
+        "tip": "The secret is sent only once and never comes back from the server: to change it, edit the instance and type the new one."
       }
     }
   },

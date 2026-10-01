@@ -192,11 +192,65 @@ export const COLOR = {
   info: '#60A5FA',
 } as const
 
+/**
+ * Paleta de bandas wifi (issue #986): una FAMILIA de color distinta por banda
+ * para que se diferencien de un vistazo en tema claro y oscuro (antes 2.4 GHz
+ * azul #60A5FA y 5 GHz cian #22D3EE eran dos azules casi iguales, y 6 GHz
+ * caía al verde por defecto, igual que el cable).
+ *   - 2.4 GHz: naranja (cálido; la banda legacy/lenta)
+ *   - 5 GHz:   cian (familia del acento de la app; la banda principal)
+ *   - 6 GHz:   fucsia (la banda más nueva; alejada del violeta de túneles WG)
+ *   - 60 GHz:  pizarra (WiGig, prácticamente inexistente en este ámbito)
+ * Reservados y por eso NO usados aquí: ámbar (señal débil y uplinks wifi),
+ * violeta (túneles WG) y verde (cable/estado ok). Mismo hex en ambos temas:
+ * nivel 500 de Tailwind, con saturación suficiente sobre el canvas claro
+ * (#F3F5F9) y el oscuro (#070B12).
+ */
+export const BAND_HEX = {
+  '2.4 GHz': '#F97316', // orange-500
+  '5 GHz': '#06B6D4', // cyan-500
+  '6 GHz': '#D946EF', // fuchsia-500
+  '60 GHz': '#94A3B8', // slate-400
+} as const
+
 export function bandColor(band: Band, weak: boolean): string {
   if (weak) return COLOR.warn
-  if (band === '5 GHz') return COLOR.accent
-  if (band === '2.4 GHz') return COLOR.info
-  return COLOR.ok
+  return BAND_HEX[band as keyof typeof BAND_HEX] ?? COLOR.ok
+}
+
+/**
+ * Clases Tailwind del badge de banda en DOM (panel usteer). Misma paleta que
+ * BAND_HEX: clases literales (el JIT no ve clases dinámicas), mantener en sync.
+ */
+export function bandBadgeClass(band: string): string {
+  switch (band) {
+    case '2.4 GHz':
+      return 'bg-[#F97316]/10 text-[#F97316]'
+    case '5 GHz':
+      return 'bg-[#06B6D4]/10 text-[#06B6D4]'
+    case '6 GHz':
+      return 'bg-[#D946EF]/10 text-[#D946EF]'
+    default:
+      return 'bg-info/10 text-info'
+  }
+}
+
+/**
+ * Detección de banda 6 GHz en la red (issue #991). El frontend no recibe un
+ * flag de capacidad hardware por router, así que la fuente de verdad es:
+ *   - algún router reporta clientes online en 6 GHz (Router.bandSplit.band6 > 0,
+ *     issue #645; misma fuente que el contador `clients`), O
+ *   - algún cliente figura con banda '6 GHz' (Device.band).
+ * Limitación conocida: una red con radio 6G pero sin clientes asociados aún
+ * no se detecta (no hay señal de hardware en los tipos). Cuando la red no
+ * tiene 6 GHz, la UI no la menciona (filtro Conexión de Clientes, leyenda de
+ * topología); BAND_HEX conserva la entrada por si la banda aparece.
+ */
+export function networkHasBand6(
+  routers: ReadonlyArray<Pick<Router, 'bandSplit'>>,
+  devices: ReadonlyArray<Pick<Device, 'band'>>,
+): boolean {
+  return routers.some((r) => (r.bandSplit?.band6 ?? 0) > 0) || devices.some((d) => d.band === '6 GHz')
 }
 
 export function statusColor(status: Router['status']): string {
