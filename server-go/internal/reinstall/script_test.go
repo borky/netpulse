@@ -3,7 +3,10 @@
 package reinstall_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -316,5 +319,49 @@ func TestScriptWithTrust(t *testing.T) {
 	}
 	if out, err := exec.Command("sh", "-n", "-c", plain).CombinedOutput(); err != nil {
 		t.Fatalf("not valid sh: %v\n%s", err, out)
+	}
+}
+
+// Run for real against an env file: rotating the token rewrites only the
+// token lines and keeps everything else, pin included, at mode 0600.
+func TestTokenPushScriptKeepsTheRestOfTheEnv(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, "netpulse-agent.env")
+	before := "NETPULSE_SERVER=https://192.0.2.10:3443\n" +
+		"NETPULSE_SLUG=test-router\n" +
+		"NETPULSE_SERVER_FP=" + strings.Repeat("ab", 32) + "\n" +
+		"NETPULSE_TOKEN=" + strings.Repeat("0f", 32) + "\n" +
+		"NETPULSE_PAIRING_TOKEN=11111111-2222-4333-8444-555555555555\n" +
+		"NETPULSE_INTERVAL=30\n"
+	if err := os.WriteFile(env, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := reinstall.TokenPushScript("test-router", strings.Repeat("c3", 32))
+	s = strings.ReplaceAll(s, "/etc/netpulse-agent.env", env)
+	s = strings.ReplaceAll(s, "/etc/init.d/netpulse-agent", filepath.Join(dir, "no-init"))
+	if out, err := exec.Command("sh", "-c", s).CombinedOutput(); err != nil {
+		t.Fatalf("script failed: %v\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "NETPULSE_SERVER=https://192.0.2.10:3443\n" +
+		"NETPULSE_SLUG=test-router\n" +
+		"NETPULSE_SERVER_FP=" + strings.Repeat("ab", 32) + "\n" +
+		"NETPULSE_INTERVAL=30\n" +
+		"NETPULSE_TOKEN=" + strings.Repeat("c3", 32) + "\n"
+	// The order of the lines is not part of the contract; what is kept is.
+	sorted := func(s string) string {
+		l := strings.Split(strings.TrimSpace(s), "\n")
+		sort.Strings(l)
+		return strings.Join(l, "\n")
+	}
+	if sorted(string(got)) != sorted(want) {
+		t.Fatalf("env after rotation:\n%s\nwant:\n%s", got, want)
+	}
+	if st, _ := os.Stat(env); st.Mode().Perm() != 0o600 {
+		t.Fatalf("env mode = %v, want 0600", st.Mode().Perm())
 	}
 }
