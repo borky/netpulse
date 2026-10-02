@@ -1959,6 +1959,20 @@ function ProxmoxManager({ reduce, onSaved }: { reduce: boolean; onSaved: () => v
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editing || saving) return
+    // #1057: el PUT hace upsert por id y un id vacío se coerciona a
+    // "default" en el server (legado): sin esta guarda, añadir una segunda
+    // instancia dejando el id vacío (o duplicado) pisa la primera.
+    if (isNew) {
+      const newId = editing.id.trim()
+      if (newId === '') {
+        setError(t('settings.proxmox.idRequired'))
+        return
+      }
+      if (instances.some((i) => i.id === newId)) {
+        setError(t('settings.proxmox.idDuplicate'))
+        return
+      }
+    }
     setSaving(true)
     setError(null)
     try {
@@ -2595,6 +2609,72 @@ function LimitHistoryRow({ onSaved }: { onSaved: () => void }) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// #1034: retención del log de alertas en días (kv alerts.retentionDays, por
+// /api/settings/thresholds). 0 = poda temporal off (la cota de 500 filas
+// sigue aplicando). Efecto sin reinicio: la poda horaria y la de arranque le
+// releen el kv en cada pasada.
+function AlertRetentionRow({ onSaved }: { onSaved: () => void }) {
+  const { t } = useTranslation()
+  const { isDemo } = useNetPulse()
+  const [days, setDays] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isDemo) {
+      setDays(30)
+      return
+    }
+    let cancelled = false
+    fetch('/api/settings/thresholds')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j && typeof j.alertRetentionDays === 'number')
+          setDays(j.alertRetentionDays)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isDemo])
+
+  if (days === null) return null
+
+  const save = (raw: number) => {
+    if (!Number.isFinite(raw)) return
+    const v = Math.max(0, Math.min(365, Math.round(raw)))
+    setDays(v)
+    onSaved()
+    if (isDemo) return
+    void fetch('/api/settings/thresholds', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alertRetentionDays: v }),
+    }).catch(() => {})
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1 text-sm font-medium text-text-primary">
+          {t('settings.data.alertRetention')}
+          <InfoTip text={t('settings.data.alertRetentionHint')} />
+        </div>
+        <div className="mt-0.5 text-caption text-text-muted">
+          {t('settings.data.alertRetentionCaption')}
+        </div>
+      </div>
+      <input
+        type="number"
+        min={0}
+        max={365}
+        value={days}
+        onChange={(e) => save(Number(e.target.value))}
+        aria-label={t('settings.data.alertRetention')}
+        className="w-24 rounded-lg border border-border bg-elevated px-3 py-2 text-right text-sm text-text-primary focus:border-accent focus:outline-none"
+      />
     </div>
   )
 }
@@ -5375,6 +5455,7 @@ export default function Settings() {
                 {/* Limitar historial (#975): toggle maestro + diálogo con
                     retención de presencia (#771) e ingesta de itinerancia (#907) */}
                 <LimitHistoryRow onSaved={notify} />
+                <AlertRetentionRow onSaved={notify} />
               </div>
 
               {/* Sliders de umbrales */}
