@@ -258,6 +258,10 @@ type Live struct {
 	// snmpFdbCount (#928): último conteo de entradas FDB por router SNMP,
 	// para loguear solo cuando el resultado cambia.
 	snmpFdbCount map[string]int
+	// snmpBrMac (#1036): última MAC base del bridge leída por SNMP por
+	// router. Cache para no perderla cuando el equipo no contesta el OID
+	// en un poll (la MAC alimenta el matching por MAC de la topología).
+	snmpBrMac map[string]string
 	// snmpPollStats (#930): contadores de éxito/fallo del poll SNMP por
 	// router (ok, fail, consecFail, timestamps, último error). Protegido
 	// por mu; en memoria (no persiste entre reinicios).
@@ -410,6 +414,7 @@ func NewLive(cfg *config.Config, d *db.DB, initial []RouterConfig, pool *SSHPool
 		snmpPorts:            map[string]map[string]snmpPortSample{},
 		snmpLastPoll:         map[string]time.Time{},
 		snmpFdbCount:         map[string]int{},
+		snmpBrMac:            map[string]string{},
 		snmpPollStats:        map[string]*snmpPollStat{},
 		ping:                 pingHost,
 		snmpLastMetricsTick:  map[string]int64{},
@@ -563,6 +568,11 @@ func (l *Live) SetRouters(list []RouterConfig) {
 	for id := range l.snmpLastPoll {
 		if !ids[id] {
 			delete(l.snmpLastPoll, id)
+		}
+	}
+	for id := range l.snmpBrMac {
+		if !ids[id] {
+			delete(l.snmpBrMac, id)
 		}
 	}
 	for id := range l.snmpLastMetricsTick {
@@ -3242,6 +3252,12 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 		}
 		netdev := portNetdev(port)
 		all := portMacs[netdev]
+		// #1036: portMacs se construye iterando el FDB (mapa), así que el
+		// ORDEN de las MACs por boca cambia en cada tick. Con 2-3 MACs la
+		// heurística de "primera con hostname DHCP" elegía un dispositivo
+		// distinto por ciclo y la etiqueta del puerto flappeaba. Orden
+		// estable: la selección queda determinista entre polls.
+		sort.Strings(all)
 		// 1) ¿Otro router al otro lado? (uplink router↔router)
 		neighbor := ""
 		for _, mac := range all {
@@ -3338,8 +3354,8 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 			// virtual, no el equipo enchufado). La label curada del puerto ya
 			// identifica el físico; aquí se cuenta lo que hay detrás (#291).
 			if len(all) > 3 {
-				port.ConnectedTo = fmt.Sprintf("%d dispositivos", len(all))
-				port.Detail = "agregación · ¿hipervisor o switch?"
+				// deviceCount lo traduce la app; aquí NO se formatea texto (#1036).
+				port.DeviceCount = len(all)
 				enriched = append(enriched, port)
 				continue
 			}
@@ -3659,7 +3675,7 @@ func (l *Live) GetUsteer(context.Context) (*Usteer, error) {
 		if name == "" {
 			name = cfg.ID
 		}
-		if cfg.AgentOnly {
+		if cfg.AgentOnly || cfg.SnmpEnabled {
 			mesh = append(mesh, UsteerMesh{RouterID: cfg.ID, Name: name, Usteer: false, ApsSeen: 0})
 			continue
 		}
@@ -3991,8 +4007,9 @@ func (l *Live) GetDot11r(ctx context.Context) (*Dot11rOverview, error) {
 			name = cfg.ID
 		}
 		r := Dot11rRouter{RouterID: cfg.ID, Name: name, Ifaces: []Dot11rIface{}}
-		// Agent-only (switches sin SSH ni wifi) se listan como Available=false.
-		if cfg.AgentOnly {
+		// Agent-only (switches sin SSH ni wifi) y los sondeados por SNMP (sin
+		// SSH en absoluto, #1026) se listan como Available=false.
+		if cfg.AgentOnly || cfg.SnmpEnabled {
 			out.Routers = append(out.Routers, r)
 			continue
 		}
@@ -4290,7 +4307,8 @@ func (l *Live) GetSurvey(ctx context.Context) (*SurveyOverview, error) {
 			name = cfg.ID
 		}
 		r := SurveyRouter{RouterID: cfg.ID, Name: name, Radios: []SurveyRadio{}}
-		if cfg.AgentOnly {
+		// Agent-only y SNMP (#1026): unidades sin SSH; se listan sin radios.
+		if cfg.AgentOnly || cfg.SnmpEnabled {
 			out.Routers = append(out.Routers, r)
 			continue
 		}
