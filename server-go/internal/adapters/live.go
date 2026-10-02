@@ -97,8 +97,10 @@ type routerPolled struct {
 	board     *BoardInfo
 	cpu       int
 	ram       int
-	temp      int
-	uptimeSec float64
+	temp              int
+	flash             string
+	firmwareAvailable string
+	uptimeSec         float64
 	net       *NetDevBps
 	leases    []DhcpLease
 	// glClients (GL.iNet): base de clientes del firmware, superset de las
@@ -255,6 +257,10 @@ type Live struct {
 	snmpPorts map[string]map[string]snmpPortSample
 	// snmpLastPoll (issue #414): timestamp del último poll SNMP real por router.
 	snmpLastPoll map[string]time.Time
+	// roNetPrev: última muestra de contadores rx/tx del interfaz WAN de un
+	// router RouterOS, para calcular bps por delta entre polls (igual que
+	// GetNetDev de OpenWrt sobre /proc/net/dev, routeros_api.go).
+	roNetPrev map[string]netByteSample
 	// snmpFdbCount (#928): último conteo de entradas FDB por router SNMP,
 	// para loguear solo cuando el resultado cambia.
 	snmpFdbCount map[string]int
@@ -413,6 +419,7 @@ func NewLive(cfg *config.Config, d *db.DB, initial []RouterConfig, pool *SSHPool
 		lastObsTs:            map[string]int64{},
 		snmpPorts:            map[string]map[string]snmpPortSample{},
 		snmpLastPoll:         map[string]time.Time{},
+		roNetPrev:            map[string]netByteSample{},
 		snmpFdbCount:         map[string]int{},
 		snmpBrMac:            map[string]string{},
 		snmpPollStats:        map[string]*snmpPollStat{},
@@ -517,7 +524,9 @@ func (l *Live) SetRouters(list []RouterConfig) {
 	l.gatewayCfg = pickGateway(l.routers)
 	l.clients = map[string]*OpenWrtClient{}
 	for _, c := range l.routers {
-		if !c.AgentOnly {
+		// RouterOS no habla SSH/ubus: se sondea por su REST API (routeros_live.go),
+		// sin cliente SSH.
+		if !c.AgentOnly && c.Type != "routeros" {
 			l.clients[c.ID] = NewOpenWrtClient(c, l.pool, "root", "")
 		}
 	}
@@ -573,6 +582,11 @@ func (l *Live) SetRouters(list []RouterConfig) {
 	for id := range l.snmpBrMac {
 		if !ids[id] {
 			delete(l.snmpBrMac, id)
+		}
+	}
+	for id := range l.roNetPrev {
+		if !ids[id] {
+			delete(l.roNetPrev, id)
 		}
 	}
 	for id := range l.snmpLastMetricsTick {
@@ -954,6 +968,9 @@ func (l *Live) pollRouter(ctx context.Context, cfg RouterConfig) (*routerPolled,
 	if cfg.SnmpEnabled {
 		return l.pollRouterSNMP(cfg)
 	}
+	if cfg.Type == "routeros" {
+		return l.pollRouterROS(cfg)
+	}
 	l.mu.Lock()
 	client := l.clients[cfg.ID]
 	gw := l.gatewayCfg
@@ -1214,7 +1231,9 @@ func (l *Live) buildRouter(p *routerPolled, history []histPoint) Router {
 	}
 	if isGw {
 		r.Role, r.RoleBadge = "Gateway principal", "Principal"
-	} else if p.cfg.AgentOnly {
+	} else if p.cfg.Type == "routeros" {
+		r.Role, r.RoleBadge = "Router", "Router"
+	} else if p.cfg.AgentOnly || p.cfg.Type == "managed-switch" {
 		r.Role, r.RoleBadge = "Switch", "SW"
 	} else {
 		r.Role, r.RoleBadge = "Punto de acceso", "AP"
@@ -1243,7 +1262,10 @@ func (l *Live) buildRouter(p *routerPolled, history []histPoint) Router {
 	if p.cfg.Type != "" {
 		r.Type = p.cfg.Type
 	}
-	if outdatedFw {
+	if p.firmwareAvailable != "" && r.FirmwareTarget == "" {
+		r.FirmwareTarget = p.firmwareAvailable
+	}
+	if outdatedFw || p.firmwareAvailable != "" {
 		r.FirmwareOutdated = true
 		// Alerta no urgente (category system); el engine aplica dedup 5 min.
 		l.engine.Emit(AlertEvent{
@@ -1306,8 +1328,13 @@ func (l *Live) offlineRouter(cfg RouterConfig) Router {
 		r = *prev
 	} else {
 		model := "OpenWrt"
-		if cfg.Type == "glinet" {
+		switch cfg.Type {
+		case "glinet":
 			model = "GL.iNet"
+		case "routeros":
+			model = "RouterOS"
+		case "managed-switch":
+			model = "Managed Switch"
 		}
 		name := cfg.Name
 		if name == "" {
@@ -1318,13 +1345,19 @@ func (l *Live) offlineRouter(cfg RouterConfig) Router {
 			IP: cfg.Host, Health: 0,
 			CPU: iptr(0), RAM: iptr(0), Temp: iptr(0),
 			Uptime: "—", Clients: 0, Sparkline: []float64{},
+			Type: cfg.Type,
 		}
 		if gw != nil && cfg.ID == gw.ID {
 			r.Role, r.RoleBadge = "Gateway principal", "Principal"
+		} else if cfg.Type == "routeros" {
+			r.Role, r.RoleBadge = "Router", "Router"
+		} else if cfg.Type == "managed-switch" {
+			r.Role, r.RoleBadge = "Switch", "SW"
 		} else {
 			r.Role, r.RoleBadge = "Punto de acceso", "AP"
 		}
 	}
+	r.Type = cfg.Type
 	r.Status = "offline"
 	if l.accessMissing(cfg.ID) {
 		r.Status = "unreachable"
@@ -2228,15 +2261,17 @@ func (l *Live) pollWireGuard(devices []Device) *WireGuardStats {
 // FDB gateway si no hay memoria) + device_attrib (index.js:396-460).
 func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 	leasesByMac := map[string]DhcpLease{}
+	leaseRouter := map[string]string{}
 	arpByMac := map[string]string{}
 	glByMac := map[string]DhcpLease{}
-	for _, p := range polled {
+	for rID, p := range polled {
 		for mac, ip := range p.arp {
 			arpByMac[mac] = ip
 		}
 		for _, le := range p.leases {
 			if le.MAC != "" {
 				leasesByMac[le.MAC] = le
+				leaseRouter[le.MAC] = rID
 			}
 		}
 		// gl-clients: fallback de IP para MACs sin lease (dnsmasq sin ese
@@ -2428,9 +2463,6 @@ func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 			if _, ok := seen[mac]; ok {
 				continue
 			}
-			if _, ok := leasesByMac[mac]; ok {
-				continue
-			}
 			if _, ok := known[mac]; ok {
 				continue
 			}
@@ -2562,11 +2594,17 @@ func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 		// tiene idioma: "Desconocido" viajaba tal cual hasta la UI y salía en
 		// español en una interfaz en inglés. Quien pinta, traduce.
 		manufacturer := oui.Lookup(mac)
+		defaultRouterID := gwID
+		if defaultRouterID == "" {
+			if rID, ok := leaseRouter[mac]; ok {
+				defaultRouterID = rID
+			}
+		}
 		d := Device{
 			ID:  strings.ToLower(strings.ReplaceAll(mac, ":", "-")),
 			MAC: mac, Manufacturer: manufacturer,
 			TrafficMbps: 0, Sparkline: []float64{},
-			RouterID: gwID, Band: "—",
+			RouterID: defaultRouterID, Band: "—",
 			Online: isSeen,
 		}
 		if hasLease {
@@ -2661,6 +2699,8 @@ func (l *Live) buildDevices(polled map[string]*routerPolled) []Device {
 			d.RouterID = k.routerID
 			d.Band = k.band
 			d.SignalDbm = k.signal
+		} else if rID, ok := leaseRouter[mac]; ok && d.RouterID == "" {
+			d.RouterID = rID
 		}
 		// #551: TrafficMbps del cliente desde el rate en memoria (nlbwmon u
 		// hostapd) sin consultar la store en cada rebuild. Solo online; los
@@ -3152,6 +3192,7 @@ type liveExtras struct {
 	MAC                 string        `json:"mac"`
 	Firmware            string        `json:"firmware"`
 	FirmwareUpdated     bool          `json:"firmwareUpdated"`
+	FirmwareAvailable   string        `json:"firmwareAvailable,omitempty"`
 	LastReboot          string        `json:"lastReboot"`
 	Soc                 string        `json:"soc"`
 	Flash               string        `json:"flash"`
@@ -3466,6 +3507,13 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 				extras.Soc = "—"
 			}
 		}
+		if p.firmwareAvailable != "" {
+			extras.FirmwareAvailable = p.firmwareAvailable
+			extras.FirmwareUpdated = false
+		}
+		if p.flash != "" {
+			extras.Flash = p.flash
+		}
 		if p.uptimeSec > 0 {
 			rb := time.Now().Add(-time.Duration(p.uptimeSec) * time.Second)
 			extras.LastReboot = fmt.Sprintf("%02d/%02d/%d, %02d:%02d", rb.Day(), int(rb.Month()), rb.Year(), rb.Hour(), rb.Minute())
@@ -3502,8 +3550,11 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 		l.mu.Unlock()
 	}
 	if gw != nil && id == gw.ID {
-		detail.Adguard = l.pollAdGuard(ctx)
-		detail.Wireguard = l.pollWireGuard(clients)
+		// AdGuard Home y WireGuard (OpenWrt/GL.iNet ubus/SSH) no aplican a RouterOS.
+		if cfg.Type != "routeros" {
+			detail.Adguard = l.pollAdGuard(ctx)
+			detail.Wireguard = l.pollWireGuard(clients)
+		}
 	} else {
 		// Backhaul real del AP: boca que enlaza con otro router + latencia
 		var uplink *EthPort
