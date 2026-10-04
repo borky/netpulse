@@ -66,6 +66,19 @@ default, and whether it carries anything that identifies the installation.
 A URL assembled at runtime from pieces will not show up here; the guard tests
 below are the second line for the project's own domain.
 
+Read and accepted at the 2026-10-04 sync (v2.32.0):
+
+- **Speedtest providers** (#1037, #1052): Cloudflare and M-Lab NDT join
+  LibreSpeed and Ookla, and **M-Lab is the default** when no provider is
+  stored. M-Lab publishes every test it serves, client IP included, as open
+  data. Nothing runs unless asked: the schedule is off until
+  `settings.speedtest.enabled` is set, and a manual test is a click. Before
+  turning the schedule on, pick the provider deliberately - a self-hosted
+  LibreSpeed sends nothing outside the network. The M-Lab address is built
+  by its client library, so the URL check above does not show it.
+- **MCP server at `/mcp`** (#1118): inbound only, off unless
+  `NETPULSE_MCP_ENABLED=1`, API-token Bearer auth, rate limited, read-only.
+
 ## What is here, and where it should end up
 
 Upstream took most of this fork in 2.28.40 - 2.28.42 (sync of 2026-10-01),
@@ -87,7 +100,7 @@ Still only here, and worth offering:
 
 | area | commits |
 |---|---|
-| UniFi controller integration | 14 |
+| UniFi controller integration (its settings are still a card of their own: upstream's integrations hub, #968, needs a server-side on/off setting UniFi does not have) | 14 |
 | DHCP static reservations name fixed-address clients | 2 |
 | mDNS host records; hwmon temperature fallback; camera and appliance vendors | 3 |
 
@@ -101,6 +114,7 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 | patch | why it is not upstream |
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
+| **HTTPS keeps the port it was set up on** — `tlsmode.New` records 3443 for an install whose HTTPS predates the port setting | Upstream #978 made the port a setting and moved the default to 443 with no migration, so an upgrade moved a running HTTPS listener away from the port its agents are pinned to. Generic and worth offering. |
 
 ### Why telemetry is unwired, not deleted
 
