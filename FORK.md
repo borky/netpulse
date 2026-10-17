@@ -124,6 +124,7 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 | patch | why it is not upstream |
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
+| **Deleting a router removes its NetGrip executor token** — one line in `handleDeleteConfigRouter` | Upstream #1291 deletes the agent state and token but leaves the executor token, and the fork's HTTPS guard relies on that state to refuse a plain-http send. Generic cleanup, worth offering. |
 
 ### Why telemetry is unwired, not deleted
 
@@ -270,7 +271,11 @@ channel as when the panel does not answer:
   and a **revoked or uninstalled** agent too: revoking forgets the report in
   memory but leaves both the persisted report and the executor token behind,
   and treating that as "no agent" sent the next plan's token in clear - a
-  review demonstrated it. So only a router with no report anywhere keeps
+  review demonstrated it. Deleting a router (upstream #1291) does remove
+  the persisted report, so here the delete also removes the executor token;
+  otherwise a router re-added under the same id would count as never having
+  had an agent and get the old token in clear. So only a router with no
+  report anywhere keeps
   upstream's behaviour, an executor token and an address and nothing more,
   which upstream's own delegation tests depend on; refusing that case too, as
   a first version of this fix did, broke them. A failed lookup counts as
