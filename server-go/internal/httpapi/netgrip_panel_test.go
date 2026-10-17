@@ -382,6 +382,46 @@ func TestApplyViaNetGripAfterTheAgentIsRevoked(t *testing.T) {
 	}
 }
 
+// Deleting a router also deletes its agent state. A router re-added under
+// the same id then counts as never having had an agent, so the delete must
+// take the executor token with it, or the next plan sends it unpinned.
+func TestApplyViaNetGripAfterTheRouterIsDeletedAndReAdded(t *testing.T) {
+	var got atomic.Value
+	got.Store("")
+	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.Store(r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer panel.Close()
+
+	s := panelTestServer(t)
+	addPanelRouter(t, s, "gw", "router-a", panel.Listener.Addr().String())
+	if _, err := s.db.Exec("INSERT INTO kv (key, value) VALUES (?, ?)",
+		"netgrip.executor_token.gw", "exec-token-for-test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("INSERT INTO kv (key, value) VALUES (?, ?)",
+		agentStateKey("gw"), `{"payload":{"panelTls":true,"panelSpki":"ab12"}}`); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/config/routers/gw", nil)
+	req.SetPathValue("id", "gw")
+	rec := httptest.NewRecorder()
+	s.handleDeleteConfigRouter(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: status %d", rec.Code)
+	}
+	addPanelRouter(t, s, "gw", "router-a", panel.Listener.Addr().String())
+
+	if _, err := s.applyViaNetGrip("gw", "plan-1", nil); err != nil {
+		t.Fatalf("applyViaNetGrip: %v", err)
+	}
+	if auth := got.Load().(string); auth != "" {
+		t.Fatalf("the deleted router's executor token was delivered: %q", auth)
+	}
+}
+
 // A stored address that already carries a port takes the reported one instead.
 func TestPanelTargetReplacesAStoredPort(t *testing.T) {
 	_, addr, _, err := netgripPanelTarget("192.0.2.1:22", netgripPanel{Port: 8090}, freshReport, 5*time.Second)
