@@ -79,6 +79,15 @@ Read and accepted at the 2026-10-04 sync (v2.32.0):
 - **MCP server at `/mcp`** (#1118): inbound only, off unless
   `NETPULSE_MCP_ENABLED=1`, API-token Bearer auth, rate limited, read-only.
 
+Read and accepted at the 2026-10-17 sync (v2.43.0): no new outbound address.
+The only new URL is a LAN example in `NETPULSE_AGENT_URL`'s comment and tests.
+
+- **Announcements goal** (#1319): an optional `goal {current, target}` draws a
+  progress bar. The numbers are typed into `announcements.json`; nothing is
+  counted live and the feed request is unchanged (the request guard passes).
+- **Re-emit to fleet** (#1313): an admin button that rewrites every native
+  agent's env over SSH and rotates its token. Inside the network, on demand.
+
 ## What is here, and where it should end up
 
 Upstream took most of this fork in 2.28.40 - 2.28.42 (sync of 2026-10-01),
@@ -91,6 +100,8 @@ as squashed integrations whose messages name the fork commits they carry:
 | HTTPS with a private CA (see below) | #942 |
 | Routers / topology / devices | 198e423, 8ac8293 |
 | WAN, alerts, VLANs, agents | #946 |
+| DHCP static reservations, mDNS host records, camera and appliance vendors | #1333 (v2.40.0) |
+| HTTPS keeps the port it was set up on | #1226 (v2.35.0) |
 
 Upstream kept the Spanish comments those commits were written with, so the
 fork's English translations stay only on code that is still fork-only;
@@ -100,9 +111,8 @@ Still only here, and worth offering:
 
 | area | commits |
 |---|---|
-| UniFi controller integration (its settings are still a card of their own: upstream's integrations hub, #968, needs a server-side on/off setting UniFi does not have) | 14 |
-| DHCP static reservations name fixed-address clients | 2 |
-| mDNS host records; hwmon temperature fallback; camera and appliance vendors | 3 |
+| UniFi controller integration (its settings are still a card of their own: upstream's integrations hub, #968, needs a server-side on/off setting UniFi does not have) | 15 |
+| hwmon temperature fallback, naming the chip it read | 1 |
 
 When upstream takes a squashed integration, check the commits it names for
 hunks in files upstream does not have: dropping such a commit drops those
@@ -114,7 +124,6 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 | patch | why it is not upstream |
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
-| **HTTPS keeps the port it was set up on** — `tlsmode.New` records 3443 for an install whose HTTPS predates the port setting | Upstream #978 made the port a setting and moved the default to 443 with no migration, so an upgrade moved a running HTTPS listener away from the port its agents are pinned to. Generic and worth offering. |
 
 ### Why telemetry is unwired, not deleted
 
