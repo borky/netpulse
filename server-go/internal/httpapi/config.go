@@ -305,6 +305,10 @@ func (s *server) handleDeleteConfigRouter(w http.ResponseWriter, r *http.Request
 	_, _ = s.db.Exec("DELETE FROM kv WHERE key = ?", agentTokenKeyPrefix+id)
 	_, _ = s.db.Exec("DELETE FROM kv WHERE key = ?", agentStateKeyPrefix+id)
 	_, _ = s.db.Exec("DELETE FROM kv WHERE key = ?", agentTransportPrefix+id)
+	// The executor token goes too: with the agent state gone, a router
+	// re-added under the same id counts as never having had an agent, and a
+	// leftover token would be sent to it the way upstream addresses a panel.
+	_, _ = s.db.Exec("DELETE FROM kv WHERE key = ?", "netgrip.executor_token."+id)
 	if s.agents != nil {
 		s.agents.Forget(id)
 	}
