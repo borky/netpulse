@@ -79,6 +79,20 @@ Read and accepted at the 2026-10-04 sync (v2.32.0):
 - **MCP server at `/mcp`** (#1118): inbound only, off unless
   `NETPULSE_MCP_ENABLED=1`, API-token Bearer auth, rate limited, read-only.
 
+Read and accepted at the 2026-10-25 sync (v2.47.0):
+
+- **OpenWrt release index** (#1444, #1478): the server fetches
+  `https://downloads.openwrt.org/releases/` once a day, so the "firmware
+  outdated" alert only fires for a version that exists. On by default with no
+  off switch; the interval is `firmware.releases.intervalHours` (1-168). A
+  plain GET - no query string, no custom header, Go's default user agent - so
+  it carries nothing beyond the server's public address, like any package
+  download from the same host. Accepted as-is. The address is built from
+  `DefaultImageBase` plus a path, so the URL check above does not show it.
+- The new `api.github.com/repos/gnacho/netpulse` literals are in `web/`, the
+  project's landing site, not in anything this fork builds or runs.
+- The agent's firmware-backup upload (#1462) goes to the agent's own server.
+
 Read and accepted at the 2026-10-17 sync (v2.43.0): no new outbound address.
 The only new URL is a LAN example in `NETPULSE_AGENT_URL`'s comment and tests.
 
@@ -112,7 +126,7 @@ Still only here, and worth offering:
 | area | commits |
 |---|---|
 | UniFi controller integration (its settings are still a card of their own: upstream's integrations hub, #968, needs a server-side on/off setting UniFi does not have) | 15 |
-| hwmon temperature fallback, naming the chip it read | 1 |
+| hwmon temperature fallback, naming the chip it read: since upstream #1500 the last fallback, after upstream's own hwmon step, which accepts only known CPU chips and so finds nothing on ipq40xx, whose one sensor is the radio | 1 |
 
 When upstream takes a squashed integration, check the commits it names for
 hunks in files upstream does not have: dropping such a commit drops those
