@@ -4298,8 +4298,8 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 	}
 	clients := []Device{}
 	detDevices, detDists := inferTopology(polledAll, l.buildDevices(polledAll, ""))
-	// Mismo sello que en las otras rutas, con sus distnodes para que los ids
-	// de enganche coincidan con los del overview.
+	// Same seal as the other paths, with its own dist nodes so the attach
+	// ids match the ones the overview produces.
 	l.sealUniFiInfra(detDevices, detDists, l.gatewayID())
 	// #954: first/last seen también en los clientes del detalle del router.
 	l.applyDeviceSeen(detDevices)
