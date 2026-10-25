@@ -148,6 +148,7 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
 | **Deleting a router removes its NetGrip executor token** — one line in `handleDeleteConfigRouter` | Upstream #1291 deletes the agent state and token but leaves the executor token, and the fork's HTTPS guard relies on that state to refuse a plain-http send. Generic cleanup, worth offering. |
+| **An agent-fed usteer AP with no clients sends `[]`** — one field in `usteerAPsFromPayload` | Upstream #1431 leaves `clients` nil for an AP nobody is attached to, so `/api/usteer` sends `null`; the Roaming page iterates it unguarded, throws, and with no error boundary the whole page goes blank. The SSH path already starts with `[]`. An upstream bug, worth reporting; drop this row once upstream fixes it. |
 
 ### Why telemetry is unwired, not deleted
 

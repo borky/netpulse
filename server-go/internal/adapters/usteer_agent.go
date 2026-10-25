@@ -69,6 +69,7 @@ func usteerAPsFromPayload(name string, p *probe.Payload) ([]UsteerAP, int) {
 				Freq:           ap.Freq,
 				UtilizationPct: ap.Load,
 				ClientCount:    ap.Clients,
+				Clients:        []UsteerClient{}, // [] as on the SSH path: null blanks the Roaming page
 				Local:          true,
 				Iface:          ifaceByBSSID[strings.ToUpper(ap.BSSID)],
 			})
