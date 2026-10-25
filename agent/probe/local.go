@@ -463,10 +463,11 @@ func (p *Prober) probeSystem(ctx context.Context) *SystemData {
 		sd.Temp = ParseTempC(out)
 		any = true
 	}
-	// No thermal zone on this board: fall back to whatever hwmon sensor
-	// answers, carrying the chip that measured it. On ath10k boards that is
-	// a WiFi radio and not the SoC, so the source has to travel with the
-	// number instead of being presented as a CPU temperature.
+	// CmdTemp found no thermal zone and no CPU chip it knows: fall back to
+	// whatever hwmon sensor answers, carrying the chip that measured it. On
+	// ath10k boards that is a WiFi radio and not the SoC, so the source has
+	// to travel with the number instead of being presented as a CPU
+	// temperature.
 	if sd.Temp == nil {
 		if out := p.runBest(ctx, CmdTempHwmon, 0); out != "" {
 			if temp, chip := ParseTempHwmon(out); temp != nil {
