@@ -89,8 +89,17 @@ Read and accepted at the 2026-10-25 sync (v2.47.0):
   it carries nothing beyond the server's public address, like any package
   download from the same host. Accepted as-is. The address is built from
   `DefaultImageBase` plus a path, so the URL check above does not show it.
-- The new `api.github.com/repos/gnacho/netpulse` literals are in `web/`, the
-  project's landing site, not in anything this fork builds or runs.
+- The new `api.github.com/repos/gnacho/netpulse` literals, a raw `install.sh`
+  link shown as text and an SVG namespace are all in `web/`, the project's
+  landing site, not in anything this fork builds or runs.
+- **WiFi config in every push** (#1450): the agent sends `uci show wireless`
+  with secret options filtered out, and the server keeps it in
+  `agent.state.<slug>`. Upstream's filter listed exact option names and let
+  WEP `key1..4`, `sae_password`, RADIUS `auth/acct/dae_secret`,
+  `priv_key_pwd`, the WPS PIN and the 802.11r `r0kh`/`r1kh` key lists
+  through; the fork matches whole option names, anchored on the option so a
+  value or a section name cannot drop a line (`agent/probe/probe.go`,
+  tested in `uciwireless_secrets_test.go`). Generic, worth offering.
 - The agent's firmware-backup upload (#1462) goes to the agent's own server.
 
 Read and accepted at the 2026-10-17 sync (v2.43.0): no new outbound address.

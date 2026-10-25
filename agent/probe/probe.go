@@ -38,11 +38,12 @@ const (
 	CmdTemp = `o=""; for w in x86_pkg_temp cpu-thermal cpu_thermal soc-thermal; do for d in /sys/class/thermal/thermal_zone*; do [ "$(cat "$d/type" 2>/dev/null)" = "$w" ] && o=$(cat "$d/temp" 2>/dev/null) && break 2; done; done; [ -n "$o" ] || for f in /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] && o=$(cat "$f") && break; done; [ -n "$o" ] || for h in /sys/class/hwmon/hwmon*; do case "$(cat "$h/name" 2>/dev/null)" in k10temp|coretemp|k8temp|cpu_thermal|soc_thermal) [ -r "$h/temp1_input" ] && o=$(cat "$h/temp1_input") && break;; esac; done; printf '%s\n' "$o"`
 	// CmdTempHwmon: the last fallback, when CmdTemp finds neither a thermal
 	// zone nor one of the CPU chips it knows (the ipq40xx builds expose no
-	// zone, and their only hwmon sensor is the radio's). Prints "<millidegrees> <chip>" for the
-	// first hwmon sensor that answers. On an ath10k board that chip is the
-	// WiFi radio, NOT the SoC — hence the chip name travels with the value,
-	// so nothing downstream can pass it off as a CPU temperature. Radios
-	// only answer while they are up, so unreadable sensors are skipped.
+	// zone, and their only hwmon sensor is the radio's). Prints
+	// "<millidegrees> <chip>" for the first hwmon sensor that answers. On an
+	// ath10k board that chip is the WiFi radio, NOT the SoC - hence the chip
+	// name travels with the value, so nothing downstream can pass it off as
+	// a CPU temperature. Radios only answer while they are up, so unreadable
+	// sensors are skipped.
 	CmdTempHwmon = `for f in /sys/class/hwmon/hwmon*/temp*_input; do v=$(cat "$f" 2>/dev/null) || continue; [ -n "$v" ] && echo "$v $(cat "$(dirname "$f")/name" 2>/dev/null)" && break; done`
 	CmdNetDev    = "cat /proc/net/dev | tail -n +3"
 	// CmdPingWan: latencia + pérdida a internet (solo gateway). %s = target.
@@ -155,7 +156,13 @@ const (
 	// uciWirelessSecretsFilter: líneas `option` con secretos fuera del push
 	// (key/PSK/SAE/contraseñas/RADIUS). Se conserva el resto del volcado tal
 	// cual. Busybox grep -E soporta la alternancia.
-	uciWirelessSecretsFilter = `grep -v -E '\.(key|sae_key|wpa_psk|psk|password|secret|radius_secret)='`
+	//
+	// FORK: whole option names, not a list of exact ones. The exact list let
+	// WEP key1..key4, sae_password, auth/acct/dae_secret, priv_key_pwd, the
+	// WPS PIN and the 802.11r r0kh/r1kh key lists through. Anchored on the
+	// option name (wireless.<section>.<option>=), so neither a value nor a
+	// section name can drop a line. The 802.11r parser reads none of them.
+	uciWirelessSecretsFilter = `grep -v -E '^[^.=]+\.[^.=]+\.(key[0-9]*|sae_key|wps_pin|[a-z0-9_]*(psk|password|passwd|pwd|secret)[0-9]*|r[01]kh)='`
 	// CmdPortStates: "<name> <operstate> <speed> <dsa> <type> <conduit>" por
 	// interfaz.
 	//   - dsa: "dsa" cuando la interfaz es un conduit DSA (tiene el directorio
