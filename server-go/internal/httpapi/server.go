@@ -39,6 +39,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/db"
 	"github.com/gnacho/netpulse/server-go/internal/firmware"
 	"github.com/gnacho/netpulse/server-go/internal/internethealth"
+	"github.com/gnacho/netpulse/server-go/internal/kvseal"
 	"github.com/gnacho/netpulse/server-go/internal/mcp"
 	"github.com/gnacho/netpulse/server-go/internal/mqttpub"
 	"github.com/gnacho/netpulse/server-go/internal/orchestr"
@@ -151,6 +152,10 @@ type Deps struct {
 	// catálogo de semilla embebida sin red ni persistencia (demo y tests
 	// que no ejercitan el descubrimiento).
 	VendorCatalog *rintegration.Catalog
+
+	// Secrets seals credentials before they are stored in kv (the Matrix
+	// channel). nil: the routes that need it answer 503.
+	Secrets *kvseal.Sealer
 }
 
 type server struct {
@@ -250,6 +255,9 @@ type server struct {
 	// fetch ni kv si nadie aporta uno (demo): sirve la semilla embebida.
 	vendorCatalog *rintegration.Catalog
 
+	// secrets: see Deps.Secrets.
+	secrets *kvseal.Sealer
+
 	// CollectorReader: lector read-only de metrics.db del sidecar (#328).
 	collectorReader *collectorreader.Reader
 
@@ -301,6 +309,7 @@ func NewHandler(d Deps) http.Handler {
 		upgrades:        newUpgradeTracker(),
 		tokenStore:      d.TokenStore,
 		mcp:             d.MCP,
+		secrets:         d.Secrets,
 		collectorReader: d.CollectorReader,
 		baselines:       d.Baselines,
 		internetHealth:  d.InternetHealth,
