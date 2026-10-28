@@ -135,6 +135,7 @@ Still only here, and worth offering:
 | area | commits |
 |---|---|
 | UniFi controller integration (its settings are still a card of their own: upstream's integrations hub, #968, needs a server-side on/off setting UniFi does not have) | 15 |
+| Matrix notification channel, with its homeserver URL, room id and token sealed by `internal/kvseal` (key in `secrets.key` in the data directory). Branch `feature/matrix-notifications`, cut from `main`, is the PR as is. It calls only the homeserver the admin enters; nothing outbound by default | 1 |
 | hwmon temperature fallback, naming the chip it read: since upstream #1500 the last fallback, after upstream's own hwmon step, which accepts only known CPU chips and so finds nothing on ipq40xx, whose one sensor is the radio | 1 |
 
 When upstream takes a squashed integration, check the commits it names for
