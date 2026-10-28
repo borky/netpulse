@@ -1533,6 +1533,7 @@
       "soundOff": "Desactivado",
       "soundOn": "Activado — suena un beep suave",
       "telegramCaption": "Notificaciones al bot de Telegram",
+      "matrixCaption": "Notificaciones a una sala de Matrix",
       "testSound": "Probar beep de alerta",
       "title": "Notificaciones",
       "notConfigured": "Sin configurar"
@@ -1953,6 +1954,23 @@
       "hint": "El topic funciona como contraseña: quien lo conozca recibirá las notificaciones. Usa uno largo y aleatorio.",
       "urgentOnly": "Solo alertas urgentes",
       "urgentOnlyHint": "Activado: el canal recibe solo las alertas urgentes (recomendado, el comportamiento habitual). Desactívalo para que llegue todo lo que aparece en el feed según el nivel elegido en Alertas."
+    },
+    "matrix": {
+      "title": "Matrix",
+      "description": "Alertas publicadas en una sala de Matrix por una cuenta bot, en tu propio homeserver o en cualquier otro. La URL del homeserver, el id de la sala y el token de acceso se guardan cifrados.",
+      "server": "URL del homeserver",
+      "roomId": "Id de la sala",
+      "roomIdHint": "Ajustes de la sala → Avanzado → ID interno de la sala. Empieza por ! - un alias como #sala:servidor no sirve. Invita al bot a la sala y acepta la invitación con el bot antes de guardar.",
+      "token": "Token de acceso",
+      "tokenHint": "El token de acceso de la cuenta bot. Se comprueba contra el homeserver (whoami) al guardar y no vuelve a mostrarse.",
+      "tokenKeep": "Configurado (escríbelo solo para cambiarlo)",
+      "tokenSet": "configurado",
+      "incomplete": "La URL del homeserver, el id de la sala y el token de acceso son obligatorios",
+      "unreadable": "Las credenciales guardadas no se pueden descifrar con la clave de este servidor (secrets.key del directorio de datos se perdió o se sustituyó). Vuelve a introducirlas.",
+      "secretsUnavailable": "Este servidor no puede abrir su clave de cifrado (secrets.key en el directorio de datos no se puede leer o no es una clave válida), así que los ajustes de Matrix no se pueden guardar. La causa está en el log del servidor al arrancar; corrige o elimina ese fichero y reinicia NetPulse.",
+      "sendTest": "Probar",
+      "urgentOnly": "Solo alertas urgentes",
+      "urgentOnlyHint": "Activado: el canal recibe solo las alertas urgentes (recomendado). Desactivado: todo lo que aparece en el feed según el nivel elegido en Alertas; las no urgentes llegan como avisos silenciosos."
     },
     "mcp": {
       "title": "MCP — asistentes de IA",
@@ -2728,6 +2746,20 @@
           "Activa ⟦Activar notificaciones Telegram⟧ y pulsa ⟦Enviar prueba⟧."
         ],
         "tip": "Para avisar a un grupo, añade el bot al grupo y usa el ID de ese chat (empieza por -). Tu ID de usuario lo consultas con @userinfobot."
+      },
+      "matrix": {
+        "title": "Alertas por Matrix",
+        "subtitle": "Avisos en tu propio servidor de chat",
+        "intro": "Una cuenta bot de Matrix publica las alertas en una sala de tu homeserver. La URL del homeserver, el id de la sala y el token se guardan cifrados.",
+        "steps": [
+          "Crea una cuenta para el bot en tu homeserver e inicia sesión con ella una vez, por ejemplo en Element, para obtener su token de acceso (Element: Ajustes → Ayuda y acerca de → Token de acceso).",
+          "Invita al bot a la sala que debe recibir las alertas y acepta la invitación con el bot.",
+          "Copia el id interno de la sala (Element: Ajustes de la sala → Avanzado). Empieza por !.",
+          "Ve a ⟦Ajustes⟧, sección ⟦Notificaciones⟧, y abre la fila ⟦Notificaciones a una sala de Matrix⟧.",
+          "Rellena ⟦URL del homeserver⟧, ⟦Id de la sala⟧ y ⟦Token de acceso⟧ y pulsa ⟦Guardar⟧: NetPulse comprueba el token y que el bot está en la sala antes de guardar.",
+          "Pulsa ⟦Probar⟧ y comprueba que llega el mensaje."
+        ],
+        "tip": "No cierres la sesión del bot: cerrarla revoca su token. Los valores se cifran con secrets.key en el directorio de datos de NetPulse; guárdalo con tus copias de seguridad o tendrás que volver a introducir las credenciales."
       },
       "mcp": {
         "title": "Asistentes de IA (MCP)",

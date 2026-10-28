@@ -20,6 +20,7 @@ import {
   ListChecks,
   Radio,
   BellRing,
+  MessagesSquare,
   Router as RouterIcon,
   Send,
   Server,
@@ -65,6 +66,7 @@ const FLOWS = [
   { key: 'mqtt', icon: Radio },
   { key: 'ntfy', icon: BellRing },
   { key: 'telegram', icon: Send },
+  { key: 'matrix', icon: MessagesSquare },
   { key: 'mcp', icon: Bot },
 ] as const
 

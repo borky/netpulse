@@ -1,5 +1,5 @@
 /**
- * Integraciones server-side (#968): toggles de Proxmox/ntfy/Telegram/MQTT
+ * Integraciones server-side (#968): toggles de Proxmox/ntfy/Telegram/Matrix/MQTT
  * leídos de GET /api/settings/integrations y escritos con PUT partial-safe
  * (solo la clave tocada). Ausente = activo en el servidor; MQTT refleja la
  * config efectiva del publisher (env + kv).
@@ -9,12 +9,13 @@ import { useCallback, useEffect, useState } from 'react'
 export interface IntegrationsState {
   ntfy: boolean
   telegram: boolean
+  matrix: boolean
   proxmox: boolean
   mqtt: boolean
   mcp: boolean
 }
 
-const DEFAULTS: IntegrationsState = { ntfy: true, telegram: true, proxmox: true, mqtt: false, mcp: false }
+const DEFAULTS: IntegrationsState = { ntfy: true, telegram: true, matrix: true, proxmox: true, mqtt: false, mcp: false }
 
 // parseIntegrations: mapea la view del servidor (#968 + MCP #1114). mcp solo
 // es true si el despliegue lo habilitó por env (mcpLocked=false) y el toggle
@@ -23,6 +24,7 @@ function parseIntegrations(d: Record<string, unknown>): IntegrationsState {
   return {
     ntfy: d.ntfy !== false,
     telegram: d.telegram !== false,
+    matrix: d.matrix !== false,
     proxmox: d.proxmox !== false,
     mqtt: d.mqtt === true,
     mcp: d.mcp === true,
