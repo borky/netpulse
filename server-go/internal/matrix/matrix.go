@@ -558,6 +558,9 @@ func (n *Notifier) validate(cfg Config) (string, error) {
 // SendTest posts a test message with the stored config. Like the worker it
 // requires the channel to be enabled.
 func SendTest(kv kvStore, s *kvseal.Sealer) error {
+	if s == nil {
+		return errors.New("secret storage is not available on this server: see the startup log about " + kvseal.KeyFile)
+	}
 	cfg := LoadConfig(kv, s)
 	if cfg.Unreadable {
 		return errors.New("the stored Matrix credentials cannot be decrypted: enter them again")
