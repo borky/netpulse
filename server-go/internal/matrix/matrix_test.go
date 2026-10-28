@@ -378,3 +378,10 @@ func TestLogSafeKeepsRoomAndHostOutOfTheJournal(t *testing.T) {
 		t.Errorf("LogSafe(dns) = %q", got)
 	}
 }
+
+func TestSendTestWithoutSealerNamesTheKeyFile(t *testing.T) {
+	err := SendTest(&fakeKV{}, nil)
+	if err == nil || !strings.Contains(err.Error(), kvseal.KeyFile) {
+		t.Fatalf("SendTest(nil sealer) = %v", err)
+	}
+}
