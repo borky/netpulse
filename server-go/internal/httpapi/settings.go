@@ -25,6 +25,7 @@ const orchestrationKey = "settings.orchestration_enabled"
 const (
 	integrationNtfyKey     = "settings.integrations.ntfy"
 	integrationTelegramKey = "settings.integrations.telegram"
+	integrationMatrixKey   = "settings.integrations.matrix"
 	integrationProxmoxKey  = "settings.integrations.proxmox"
 	// integrationMCPKey: toggle del endpoint /mcp (#1114). El endpoint solo
 	// EXISTE si el env NETPULSE_MCP_ENABLED=1 (opt-in duro del despliegue);
@@ -157,6 +158,7 @@ func (s *server) registerSettingsRoutes(mux *http.ServeMux) {
 		var body struct {
 			Ntfy           *bool `json:"ntfy"`
 			Telegram       *bool `json:"telegram"`
+			Matrix         *bool `json:"matrix"`
 			Proxmox        *bool `json:"proxmox"`
 			MQTT           *bool `json:"mqtt"`
 			MCP            *bool `json:"mcp"`
@@ -166,7 +168,7 @@ func (s *server) registerSettingsRoutes(mux *http.ServeMux) {
 			writeBodyError(w, st, "invalid_body", "")
 			return
 		}
-		if body.Ntfy == nil && body.Telegram == nil && body.Proxmox == nil && body.MQTT == nil && body.MCP == nil && body.ExternalAgents == nil {
+		if body.Ntfy == nil && body.Telegram == nil && body.Matrix == nil && body.Proxmox == nil && body.MQTT == nil && body.MCP == nil && body.ExternalAgents == nil {
 			writeError(w, http.StatusBadRequest, "invalid_input", "at least one integration key is required")
 			return
 		}
@@ -181,6 +183,7 @@ func (s *server) registerSettingsRoutes(mux *http.ServeMux) {
 		}{
 			{body.Ntfy, integrationNtfyKey, "ntfy.enabled"},
 			{body.Telegram, integrationTelegramKey, "telegram.enabled"},
+			{body.Matrix, integrationMatrixKey, "matrix.enabled"},
 			{body.Proxmox, integrationProxmoxKey, ""},
 			{body.MCP, integrationMCPKey, ""},
 			{body.ExternalAgents, integrationExternalAgentsKey, ""},
@@ -279,6 +282,7 @@ func (s *server) registerSettingsRoutes(mux *http.ServeMux) {
 	s.registerKnownMacsRoutes(mux)
 	s.registerTelegramRoutes(mux)
 	s.registerNtfyRoutes(mux)
+	s.registerMatrixRoutes(mux)
 	s.registerAlertsLangRoutes(mux)
 	s.registerRoamingSettingsRoutes(mux)
 	s.registerThresholdsRoutes(mux)
@@ -296,6 +300,7 @@ func (s *server) integrationsView() map[string]any {
 	return map[string]any{
 		"ntfy":           kvGetDefaultOn(s.db.DB, integrationNtfyKey),
 		"telegram":       kvGetDefaultOn(s.db.DB, integrationTelegramKey),
+		"matrix":         kvGetDefaultOn(s.db.DB, integrationMatrixKey),
 		"proxmox":        kvGetDefaultOn(s.db.DB, integrationProxmoxKey),
 		"externalAgents": kvGetDefaultOn(s.db.DB, integrationExternalAgentsKey),
 		"mqtt":           mqtt,
