@@ -46,6 +46,8 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/deviceevents"
 	"github.com/gnacho/netpulse/server-go/internal/firmware"
 	"github.com/gnacho/netpulse/server-go/internal/httpapi"
+	"github.com/gnacho/netpulse/server-go/internal/kvseal"
+	"github.com/gnacho/netpulse/server-go/internal/matrix"
 	"github.com/gnacho/netpulse/server-go/internal/mcp"
 	"github.com/gnacho/netpulse/server-go/internal/mqttpub"
 	"github.com/gnacho/netpulse/server-go/internal/ntfy"
@@ -376,13 +378,32 @@ func run() error {
 		log.Printf("[netpulse] ntfy activo: %s/%s", ntfyCfg.Server, ntfy.MaskTopic(ntfyCfg.Topic))
 	}
 
-	// Notifier compuesto: push + webhook + telegram + ntfy (SetNotifier solo admite UNO).
+	// Matrix: like ntfy, the notifier always runs and reads its config per
+	// event. Its credentials are sealed with the data directory's key; if
+	// that key cannot be opened the channel is left out, nothing else stops.
+	secrets, secretsErr := kvseal.Open(cfg.DataDir)
+	if secretsErr != nil {
+		log.Printf("[netpulse] aviso: secret storage unavailable, Matrix disabled (%v)", secretsErr)
+		secrets = nil
+	}
+	var matrixNotifier *matrix.Notifier
+	if secrets != nil {
+		mxKV := &mainKVAdapter{db: dbHandle.DB}
+		matrixNotifier = matrix.NewNotifier(mxKV, secrets)
+		if mxCfg := matrix.LoadConfig(mxKV, secrets); mxCfg.Enabled && mxCfg.Configured() {
+			log.Printf("[netpulse] matrix activo")
+		} else if mxCfg.Unreadable {
+			log.Printf("[netpulse] aviso: the stored Matrix credentials cannot be decrypted with %s; enter them again", kvseal.KeyFile)
+		}
+	}
+
+	// Notifier compuesto: push + webhook + telegram + ntfy + matrix (SetNotifier solo admite UNO).
 	// OJO nil-encapsulado (issue #57): meter un `(*webhook.Notifier)(nil)` en
 	// la cadena lo empaqueta en la interfaz con tipo pero valor nil → la
 	// interfaz NO es nil y `if n != nil` de notifierChain no lo filtra →
 	// panic al Notify. Filtrar ANTES de empaquetar.
 	var notifyChain alerts.Notifier
-	if pushNotifier != nil || webhookNotifier != nil || telegramNotifier != nil || ntfyNotifier != nil {
+	if pushNotifier != nil || webhookNotifier != nil || telegramNotifier != nil || ntfyNotifier != nil || matrixNotifier != nil {
 		// #874: el filtro de urgencia vive en cada canal (default: solo
 		// urgentes, comportamiento de siempre). El engine dispara todo lo que
 		// pasa config; cada gate recorta según su kv <canal>.urgent_only.
@@ -406,6 +427,13 @@ func run() error {
 				n:   urgencyGate{n: ntfyNotifier, kv: kv, key: "ntfy.urgent_only"},
 				kv:  kv,
 				key: "settings.integrations.ntfy",
+			})
+		}
+		if matrixNotifier != nil {
+			chain = append(chain, integrationGate{
+				n:   urgencyGate{n: matrixNotifier, kv: kv, key: "matrix.urgent_only"},
+				kv:  kv,
+				key: "settings.integrations.matrix",
 			})
 		}
 		notifyChain = chain
@@ -776,6 +804,7 @@ func run() error {
 		AlertEmitter:    adapter.AlertsEngine(),
 		ChannelPlan:     chPlan,
 		MCP:             mcpSrv,
+		Secrets:         secrets,
 		LastOverview: func() *adapters.Overview {
 			return p.LastOverview()
 		},
@@ -913,6 +942,9 @@ func run() error {
 		}
 		if ntfyNotifier != nil {
 			ntfyNotifier.Close()
+		}
+		if matrixNotifier != nil {
+			matrixNotifier.Close()
 		}
 		// Salvavidas de 3 s: salir igualmente aunque el server no cierre.
 		lifeline := time.AfterFunc(3*time.Second, func() {

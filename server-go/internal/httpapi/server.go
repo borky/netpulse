@@ -39,6 +39,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/db"
 	"github.com/gnacho/netpulse/server-go/internal/firmware"
 	"github.com/gnacho/netpulse/server-go/internal/internethealth"
+	"github.com/gnacho/netpulse/server-go/internal/kvseal"
 	"github.com/gnacho/netpulse/server-go/internal/mcp"
 	"github.com/gnacho/netpulse/server-go/internal/mqttpub"
 	"github.com/gnacho/netpulse/server-go/internal/orchestr"
@@ -143,6 +144,9 @@ type Deps struct {
 	// monta, va FUERA de RequireAuth (auth Bearer propia por API token, nunca
 	// cookie) con rate limit y fail-closed sin TokenStore.
 	MCP *mcp.Server
+	// Secrets seals credentials before they are stored in kv (the Matrix
+	// channel). nil: the routes that need it answer 503.
+	Secrets *kvseal.Sealer
 }
 
 type server struct {
@@ -230,6 +234,9 @@ type server struct {
 	// MCP: servidor MCP embebido (#1114). nil = sin endpoint /mcp.
 	mcp *mcp.Server
 
+	// secrets: see Deps.Secrets.
+	secrets *kvseal.Sealer
+
 	// CollectorReader: lector read-only de metrics.db del sidecar (#328).
 	collectorReader *collectorreader.Reader
 
@@ -281,6 +288,7 @@ func NewHandler(d Deps) http.Handler {
 		upgrades:        newUpgradeTracker(),
 		tokenStore:      d.TokenStore,
 		mcp:             d.MCP,
+		secrets:         d.Secrets,
 		collectorReader: d.CollectorReader,
 		baselines:       d.Baselines,
 		internetHealth:  d.InternetHealth,

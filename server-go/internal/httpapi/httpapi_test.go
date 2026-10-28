@@ -22,6 +22,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/clientbw"
 	"github.com/gnacho/netpulse/server-go/internal/db"
 	"github.com/gnacho/netpulse/server-go/internal/httpapi"
+	"github.com/gnacho/netpulse/server-go/internal/kvseal"
 	"github.com/gnacho/netpulse/server-go/internal/orchestr"
 	"github.com/gnacho/netpulse/server-go/internal/portseries"
 	"github.com/gnacho/netpulse/server-go/internal/sse"
@@ -92,6 +93,10 @@ func makeTestServerWithMode(t *testing.T, demoMode bool) *testServer {
 	agents := adapters.NewAgentRegistry(0)
 	hub := sse.NewHub(d, cfg.MaxSSEClients, func() any { return nil })
 	chPlan := channelplan.NewStore(d.DB)
+	secrets, err := kvseal.Open(dataDir)
+	if err != nil {
+		t.Fatalf("kvseal: %v", err)
+	}
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Config: cfg, DB: d, Adapter: adapter, Hub: hub, Secret: secret,
 		Started:       time.Now(),
@@ -100,6 +105,7 @@ func makeTestServerWithMode(t *testing.T, demoMode bool) *testServer {
 		Orchestr:      orchestrMgr,
 		Agents:        agents,
 		ChannelPlan:   chPlan,
+		Secrets:       secrets,
 	})
 	srv := httptest.NewServer(handler)
 	ts := &testServer{Server: srv, db: d, secret: secret}

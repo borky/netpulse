@@ -78,6 +78,7 @@ import { notifyBanner } from '@/lib/update-check'
 import { PALETTES, type PaletteId, type ThemeMode } from '@/lib/theme-boot'
 import TelegramCard from '@/components/TelegramCard'
 import NtfyCard from '@/components/NtfyCard'
+import MatrixCard from '@/components/MatrixCard'
 import MqttCard from '@/components/MqttCard'
 import HttpsCard from '@/components/HttpsCard'
 import pkg from '../../package.json'
@@ -4301,35 +4302,39 @@ function ServicesCard({
 // Canales de envío de avisos dentro de la card de Notificaciones (#996):
 // ntfy y Telegram son canales de notificación, no integraciones de estado o
 // inventario (esas - MQTT y Proxmox - se quedan en Servicios). Mismos
-// toggles server-side settings.integrations.{ntfy,telegram} (#968) e icono
+// toggles server-side settings.integrations.{ntfy,telegram,matrix} (#968) e icono
 // Settings2 que abre el Dialog con su card de configuración.
 // ---------------------------------------------------------------------------
 function NotifChannels({ onSaved, disabled = false }: { onSaved: () => void; disabled?: boolean }) {
   const { t } = useTranslation()
   const { integrations, setIntegration } = useIntegrations(!disabled)
-  const [dialog, setDialog] = useState<'ntfy' | 'telegram' | null>(null)
+  const [dialog, setDialog] = useState<'ntfy' | 'telegram' | 'matrix' | null>(null)
   // #1017: estado de configuración por canal para el chip "activado pero sin
-  // configurar" (ntfy sin topic; Telegram sin token o chat).
-  const [configured, setConfigured] = useState<{ ntfy: boolean; telegram: boolean } | null>(null)
+  // configurar" (ntfy sin topic; Telegram sin token o chat; Matrix without
+  // all of homeserver, room and token).
+  const [configured, setConfigured] = useState<{ ntfy: boolean; telegram: boolean; matrix: boolean } | null>(null)
   useEffect(() => {
     let alive = true
     void Promise.all([
       fetch('/api/settings/ntfy').then((r) => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/settings/telegram').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([n, g]) => {
+      fetch('/api/settings/matrix').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([n, g, m]) => {
       if (!alive) return
       setConfigured({
         ntfy: !!(n && typeof n.topic === 'string' && n.topic.trim() !== ''),
         telegram: !!(g && g.tokenSet && typeof g.chatId === 'string' && g.chatId.trim() !== ''),
+        matrix: !!(m && m.tokenSet && m.server && m.roomId),
       })
     })
     return () => {
       alive = false
     }
   }, [])
-  const rows: { key: 'ntfy' | 'telegram'; label: string; caption: string }[] = [
+  const rows: { key: 'ntfy' | 'telegram' | 'matrix'; label: string; caption: string }[] = [
     { key: 'ntfy', label: 'ntfy', caption: t('settings.notif.ntfyCaption') },
     { key: 'telegram', label: 'Telegram', caption: t('settings.notif.telegramCaption') },
+    { key: 'matrix', label: 'Matrix', caption: t('settings.notif.matrixCaption') },
   ]
   return (
     <div className="mt-4 grid grid-cols-1 gap-x-6 border-t border-border pt-4 sm:grid-cols-2">
@@ -4374,6 +4379,14 @@ function NotifChannels({ onSaved, disabled = false }: { onSaved: () => void; dis
             <DialogTitle className="sr-only">{t('settings.telegram.title')}</DialogTitle>
           </DialogHeader>
           <TelegramCard onSaved={() => { onSaved(); setDialog(null) }} bare />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dialog === 'matrix'} onOpenChange={(o) => { if (!o) setDialog(null) }}>
+        <DialogContent className={integrationDialogCls} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{t('settings.matrix.title')}</DialogTitle>
+          </DialogHeader>
+          <MatrixCard onSaved={() => { onSaved(); setDialog(null) }} bare />
         </DialogContent>
       </Dialog>
     </div>

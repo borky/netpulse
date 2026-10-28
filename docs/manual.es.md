@@ -534,7 +534,7 @@ Es la pantalla más grande. Secciones principales:
 - **Datos y umbrales**: unidades (Mbps / MB/s), intervalo de refresco (3 s / 5 s / 10 s / pausado), y los umbrales de temperatura (50-85 °C), señal (-80 a -60 dBm) y latencia (20-200 ms) que alimentan la salud. Incluye la velocidad WAN contratada y un test de velocidad periódico.
 - **Apariencia**: tema (claro/oscuro/sistema), paleta de colores, color de acento, densidad (cómoda/compacta) y reducción de animaciones.
 - **Servicios**: qué servicios se muestran (AdGuard, WireGuard) y el interruptor de Orquestación.
-- **Notificaciones**: badge de alertas, puntos pulsantes y sonido.
+- **Notificaciones**: badge de alertas, puntos pulsantes y sonido, y los canales que reenvían las alertas: ntfy, Telegram y Matrix (su URL del homeserver, id de sala y token se guardan cifrados con `secrets.key` en el directorio de datos).
 - **Administración** (solo admin, en vivo): comprobar actualizaciones, respaldos, usuarios y modo demo.
 - **Dispositivos** (solo admin): alta/edición/borrado de routers, clave pública SSH, target de firmware y configuración SNMP.
 - **Overrides de topología** y **Dispositivos de confianza** (solo admin).

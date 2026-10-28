@@ -534,7 +534,7 @@ This is the largest screen. Main sections:
 - **Data & thresholds**: units (Mbps / MB/s), refresh interval (3 s / 5 s / 10 s / paused), and the temperature (50-85 C), signal (-80 to -60 dBm) and latency (20-200 ms) thresholds that feed the health score. Includes the contracted WAN speed and a periodic speed test.
 - **Appearance**: theme (light/dark/system), color palette, accent color, density (comfy/compact) and reduced animations.
 - **Services**: which services are shown (AdGuard, WireGuard) and the Orchestration toggle.
-- **Notifications**: alert badge, pulsing dots and sound.
+- **Notifications**: alert badge, pulsing dots and sound, and the channels that forward alerts: ntfy, Telegram and Matrix (its homeserver URL, room id and token are stored encrypted with `secrets.key` in the data directory).
 - **Administration** (admin only, live): check for updates, backups, users and demo mode.
 - **Devices** (admin only): add/edit/delete routers, SSH public key, firmware target and SNMP config.
 - **Topology overrides** and **Trusted devices** (admin only).
