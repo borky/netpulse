@@ -102,6 +102,14 @@ Read and accepted at the 2026-10-25 sync (v2.47.0):
   tested in `uciwireless_secrets_test.go`). Generic, worth offering.
 - The agent's firmware-backup upload (#1462) goes to the agent's own server.
 
+Read at the 2026-10-28 sync (after v2.47.0, `d1c043fb`): no new outbound
+address; the URL check shows only removals. RouterOS polling (#1576) and
+Asuswrt support (#1580) left the server for an external pusher, and their
+rows are migrated to `type='external'`; none of this fleet's routers are of
+either type. The agent install one-liner (#1577) still fetches upstream's
+`install-agent.sh`, now to a file before running it. Neighbour scans are on
+demand by default (#1564), which the LBR20 already ran with.
+
 Read and accepted at the 2026-10-17 sync (v2.43.0): no new outbound address.
 The only new URL is a LAN example in `NETPULSE_AGENT_URL`'s comment and tests.
 
