@@ -172,6 +172,7 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
 | **Deleting a router removes its NetGrip executor token** — one line in `handleDeleteConfigRouter` | Upstream #1291 deletes the agent state and token but leaves the executor token. Since upstream #1595 nothing sends that token, so this is housekeeping only: a router re-added under the same id does not inherit a stale one. Generic cleanup, worth offering. |
+| **A Proxmox TLS change takes effect without a restart** — the TLS fields join the client cache key in `pveClientsCached` | Upstream #1608 added the CA, fingerprint and "insecure" settings but kept the key at id, URL and token, so the client built at start kept verifying until a restart: found when "insecure" did nothing on a self-signed Proxmox. An upstream bug, worth reporting; drop this row once upstream fixes it. |
 | **An agent-fed usteer AP with no clients sends `[]`** — one field in `usteerAPsFromPayload` | Upstream #1431 leaves `clients` nil for an AP nobody is attached to, so `/api/usteer` sends `null`; the Roaming page iterates it unguarded, throws, and with no error boundary the whole page goes blank. The SSH path already starts with `[]`. An upstream bug, worth reporting; drop this row once upstream fixes it. |
 
 ### Why telemetry is unwired, not deleted

@@ -20,6 +20,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -89,7 +90,11 @@ func (l *Live) pveClientsCached() []pveInstClient {
 	instances := pve.LoadInstances(l.db.DB)
 	key := ""
 	for _, in := range instances {
-		key += in.ID + "|" + in.URL + "|" + in.TokenID + "|" + in.Secret + "\n"
+		// The TLS settings belong in the key too: without them, turning on
+		// "insecure" or pasting a CA or fingerprint changed nothing until
+		// the next restart, since the client built at start kept verifying.
+		key += fmt.Sprintf("%s|%s|%s|%s|%s|%s|%t\n", in.ID, in.URL, in.TokenID, in.Secret,
+			in.CAPEM, in.FingerprintSHA256, in.Insecure)
 	}
 	if key == "" {
 		l.pveClients = nil
