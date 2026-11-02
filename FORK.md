@@ -102,6 +102,21 @@ Read and accepted at the 2026-10-25 sync (v2.47.0):
   tested in `uciwireless_secrets_test.go`). Generic, worth offering.
 - The agent's firmware-backup upload (#1462) goes to the agent's own server.
 
+Read and accepted at the 2026-11-02 sync (v2.50.0):
+
+- **Integrations vendor catalog** (#1697): opening the new Integrations page
+  fetches `vendors.json` from upstream's `gnacho/netpulse-integrations` repo
+  on `raw.githubusercontent.com`, at most once a day (kv cache, 10-minute
+  cooldown after a failure), with a built-in seed when offline. A plain GET,
+  user agent `netpulse`, nothing identifying. Nothing fetches it on a timer.
+  Accepted as-is. Installing an external pusher from that page downloads its
+  release through the GitHub API, only on that click.
+- **Proxmox TLS is verified by default** (#1608). Instances configured before
+  it were unverified and are not migrated: a self-signed Proxmox needs its CA
+  or certificate fingerprint pasted into its settings after the upgrade.
+- **NetGrip apply delegation removed** (#1595): see "Reaching a NetGrip panel
+  on HTTPS" below; the fork's pinned path to the panel went with it.
+
 Read at the 2026-10-28 sync (after v2.47.0, `d1c043fb`): no new outbound
 address; the URL check shows only removals. RouterOS polling (#1576) and
 Asuswrt support (#1580) left the server for an external pusher, and their
@@ -156,7 +171,7 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 | patch | why it is not upstream |
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
-| **Deleting a router removes its NetGrip executor token** — one line in `handleDeleteConfigRouter` | Upstream #1291 deletes the agent state and token but leaves the executor token, and the fork's HTTPS guard relies on that state to refuse a plain-http send. Generic cleanup, worth offering. |
+| **Deleting a router removes its NetGrip executor token** — one line in `handleDeleteConfigRouter` | Upstream #1291 deletes the agent state and token but leaves the executor token. Since upstream #1595 nothing sends that token, so this is housekeeping only: a router re-added under the same id does not inherit a stale one. Generic cleanup, worth offering. |
 | **An agent-fed usteer AP with no clients sends `[]`** — one field in `usteerAPsFromPayload` | Upstream #1431 leaves `clients` nil for an AP nobody is attached to, so `/api/usteer` sends `null`; the Roaming page iterates it unguarded, throws, and with no error boundary the whole page goes blank. The SSH path already starts with `[]`. An upstream bug, worth reporting; drop this row once upstream fixes it. |
 
 ### Why telemetry is unwired, not deleted
@@ -275,89 +290,20 @@ are not in a released agent yet, so that side builds with a Go workspace.
 
 ### Reaching a NetGrip panel on HTTPS
 
-When a router has a NetGrip executor token, `applyViaNetGrip` hands a plan's
-operations to the panel's `/api/executor/apply`, token attached. It used to
-address the panel as `http://<host>:8080`, which was wrong twice over: NetGrip
-has defaulted to 8090 since upstream #210, and a panel serving HTTPS refuses
-plain HTTP - while the token, which lets this server change the router, went
-in clear until it did.
+The agent reports how the router's NetGrip panel is served: its port, whether
+it is HTTPS, and the key of its self-signed certificate (`panelSpki`, the
+SHA-256 of the certificate's SubjectPublicKeyInfo, `agent/runtime/panel.go`).
+The router page's link to the panel follows that scheme.
 
-It now uses the port and scheme the embedded agent reports. The panel's
-certificate is self-signed, so the connection is pinned to the key the agent
-reports (`panelSpki`, the SHA-256 of the served certificate's
-SubjectPublicKeyInfo). The router page's link to the panel follows the same
-scheme. All of it lives in fork-only files
-(`internal/httpapi/netgrip_panel.go`, `agent/runtime/panel.go`) with one call
-site in each upstream file.
-
-Every doubtful case sends nothing, and the plan falls back to the agent's own
-channel as when the panel does not answer:
-
-- **Only the router's own agent counts** - the one whose slug is the router id,
-  which is also the id the executor token was stored under. A first version
-  matched agents by host name as well and took the first; a second agent
-  claiming the same host name could report plain HTTP and get the token sent
-  in clear. A review demonstrated it; a test now does.
-- **A router with an agent needs a fresh report from it.** An old one may
-  predate a change of scheme. Reports are persisted on every push, so this
-  covers the window after this server restarts, until the agent's next push,
-  and a **revoked or uninstalled** agent too: revoking forgets the report in
-  memory but leaves both the persisted report and the executor token behind,
-  and treating that as "no agent" sent the next plan's token in clear - a
-  review demonstrated it. Deleting a router (upstream #1291) does remove
-  the persisted report, so here the delete also removes the executor token;
-  otherwise a router re-added under the same id would count as never having
-  had an agent and get the old token in clear. So only a router with no
-  report anywhere keeps
-  upstream's behaviour, an executor token and an address and nothing more,
-  which upstream's own delegation tests depend on; refusing that case too, as
-  a first version of this fix did, broke them. A failed lookup counts as
-  stale.
-- **HTTPS is reported from how the panel was started, separately from the
-  key.** Deriving it from the key reported an HTTPS panel as plain HTTP until
-  its certificate was open. HTTPS with no key yet sends nothing.
-- No redirects are followed with the token, and no connection is kept open.
-
-**What the pin is worth depends on the agent's channel.** With the agent
-pushing over https and pinning this server's key (`NETPULSE_SERVER_FP`), the
-report cannot be altered in transit and the pin is sound. Over plain http it
-is not: the push is signed with a key derived from the token it carries, so
-anyone who reads one can forge one, and could substitute the panel's key.
-They would gain nothing new - on that same path the executor token already
-crosses in clear, in the agent's backup uploads and at start-up
-registration - but it means this change fully protects the token only once
-the agent channel is on https. On a plain-http deployment it still stops a
-passive listener from reading the token off each delegated plan.
-
-**Deploy NetGrip before NetPulse.** A NetGrip from before this change, running
-on `-https`, reports its port but not its scheme, and a new NetPulse would send
-the token to that TLS port in plain http.
-
-**MQTT propagation rides the same path.** Upstream's "Propagate to NetGrip"
-(#843) sends the broker's host, user and **password** to each NetGrip router
-as an `mqtt.configure` operation through `applyViaNetGrip`. Upstream sends it
-over plain http to port 8080; here it takes the reported port and scheme and
-the pinned connection, and every doubtful case sends nothing - the password
-included.
-
-**The SSH token fallback needs an agent report.** Upstream (#838) reads a
-missing executor token from the router over SSH, and stores it. For a router
-whose agent has never reported, upstream's plain http to port 8080 applies,
-so that fallback would send a token in clear where nothing was sent before -
-and keep doing so, since the token is then stored. `netgripTokenFor` runs the
-fallback only when the router's agent has reported, so the token goes through
-the pinned path; with no report, only a token already stored is used, as
-before #838. One window remains: NetGrip registers its token alongside the
-agent's first push, so a plan applied before that push has landed still
-takes upstream's path. Nothing leaves unless something answers on port 8080,
-which NetGrip's own default of 8090 does not.
-
-Note that `applyViaNetGrip` only runs for routers registered over SSH:
-`hostOfRouter` returns nothing for an `agent_only` router, whose plans already
-travel over the agent's channel. The standalone `netpulse-agent` binary has
-its own loopback delegation to a NetGrip at `127.0.0.1:8080`, with the same
-two problems; it is left alone because NetGrip embeds the agent and retires
-a standalone install, so the two are not run together.
+Until the 2026-11-02 sync this also carried a pinned HTTPS connection for
+`applyViaNetGrip`, which handed plan operations (MQTT propagation, broker
+password included) to the panel's `/api/executor/apply` with the executor
+token. Upstream #1595 removed that delegation: plans now always travel as
+the agent's own `apply` command over its event stream, which on a NetGrip
+router is the embedded agent itself. With the only caller gone, the fork's
+`internal/httpapi/netgrip_panel.go` and its tests were deleted. NetGrip still
+registers an executor token at start-up and NetPulse still stores it, but
+nothing sends it anywhere now.
 
 ### HTTPS for NetPulse itself
 
