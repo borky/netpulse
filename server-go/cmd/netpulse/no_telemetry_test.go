@@ -59,6 +59,10 @@ const (
 // internal/httpapi/no_call_home_announcements_test.go.
 var allowedProjectURLs = []string{
 	`"https://netpulse.cloudless.club/announcements.json"`, // static file, no parameters
+	// Not a request: the Maintainer line of the .ipk control file the server
+	// generates for the agent (#1476), package metadata only. Matched with
+	// its line start so only that field passes.
+	"\nMaintainer: Nacho <netpulse@" + projectDomain + ">\n",
 }
 
 func TestTheServerNeverCallsHome(t *testing.T) {
