@@ -730,16 +730,20 @@ func (s *server) agentInstallLine(r *http.Request, slug, token string) string {
 	// #1737: el one-liner solo usaba curl y en un router sin curl (BusyBox
 	// pelado, lo que reportó MassiPi) fallaba con "curl: not found" antes de
 	// llegar al instalador. Se mantiene curl cuando está y se cae a wget, que
-	// sí viene en todos los firmwares OpenWrt. wget de BusyBox no conoce
-	// --ca-certificate, así que se intenta con la CA y se reintenta sin
-	// verificar el certificado: el pin del servidor (--server-fp) y el token
-	// de un solo uso siguen protegiendo el resto del flujo.
+	// sí viene en todos los firmwares OpenWrt.
+	//
+	// FORK: upstream retried a failed wget without checking the certificate.
+	// The script downloaded that way is then run as root, and it is the
+	// script that applies the server pin, so a substituted one would simply
+	// skip it: the pin protects nothing once the script itself is unverified.
+	// OpenWrt's wget (uclient-fetch) understands --ca-certificate; a wget that
+	// does not now fails with a message saying what to install.
 	dest := "/tmp/netpulse-install-agent.sh"
 	var download string
 	if curlCACert != "" {
 		download = fmt.Sprintf(
-			"if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3%s -o %s %s; else wget -q --ca-certificate=\"$NPCA\" -O %s %s || wget -q --no-check-certificate -O %s %s; fi",
-			curlCACert, dest, scriptURL, dest, scriptURL, dest, scriptURL)
+			"if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3%s -o %s %s; else wget -q --ca-certificate=\"$NPCA\" -O %s %s || { echo 'netpulse: this wget cannot verify the server certificate; install curl or uclient-fetch and run the line again' >&2; false; }; fi",
+			curlCACert, dest, scriptURL, dest, scriptURL)
 	} else {
 		download = fmt.Sprintf(
 			"if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o %s %s; else wget -q -O %s %s; fi",
