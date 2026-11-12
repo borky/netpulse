@@ -3244,8 +3244,11 @@ function TrafficRetentionRow({ onSaved }: { onSaved: () => void }) {
 }
 
 function BackupsPanel() {
-  const { t } = useTranslation()
-  const [cfg, setCfg] = useState<{ enabled: boolean; frequency_h: number; retention_days: number; last_run: string; time: string } | null>(null)
+  const { t, i18n } = useTranslation()
+  const [cfg, setCfg] = useState<{
+    enabled: boolean; frequency_h: number; retention_days: number; last_run: string; time: string
+    encrypted?: boolean; passphrase_unreadable?: boolean; secrets_unavailable?: boolean
+  } | null>(null)
   const [busy, setBusy] = useState(false)
   const [backupBusy, setBackupBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3387,8 +3390,176 @@ function BackupsPanel() {
       </p>
       <p className="text-caption text-text-muted">{t('settings.admin.backup.scope')}</p>
 
+      <BackupEncryption cfg={cfg} onChanged={setCfg} />
+
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       {okMsg && <p role="status" className="text-xs text-ok">{okMsg}</p>}
+    </div>
+  )
+}
+
+// Backup encryption (fork), as pfSense and OPNsense do it: with a passphrase
+// set, every backup, scheduled or exported, is AES-256 encrypted in
+// OpenSSL's format, so it opens with plain openssl. The passphrase never
+// comes back from the server.
+function BackupEncryption<C extends { encrypted?: boolean; passphrase_unreadable?: boolean; secrets_unavailable?: boolean }>({
+  cfg,
+  onChanged,
+}: {
+  cfg: C
+  onChanged: (c: C) => void
+}) {
+  const { t } = useTranslation()
+  const [pass, setPass] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const minLen = 12
+
+  const submit = async (passphrase: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/settings/backup', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passphrase }),
+      })
+      const data = (await res.json().catch(() => null)) as (C & { message?: string; error?: { message?: string } }) | null
+      if (!res.ok) {
+        setError(data?.message ?? data?.error?.message ?? t('settings.admin.backup.saveError'))
+        return
+      }
+      if (data) onChanged(data)
+      setPass('')
+      setConfirm('')
+      setEditing(false)
+    } catch {
+      setError(t('settings.admin.backup.saveError'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const tooShort = pass.length > 0 && pass.length < minLen
+  const mismatch = confirm.length > 0 && pass !== confirm
+  const canSave = pass.length >= minLen && pass === confirm && !busy
+  const inputCls =
+    'w-full rounded-lg border border-border bg-elevated px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none'
+
+  let status: { cls: string; text: string }
+  if (cfg.passphrase_unreadable) {
+    status = { cls: 'bg-danger/10 text-danger', text: t('settings.admin.backup.enc.unreadable') }
+  } else if (cfg.encrypted) {
+    status = { cls: 'bg-ok/10 text-ok', text: t('settings.admin.backup.enc.on') }
+  } else {
+    status = { cls: 'bg-warn/10 text-warn', text: t('settings.admin.backup.enc.off') }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+          <Lock className="h-3.5 w-3.5" strokeWidth={1.75} />
+          {t('settings.admin.backup.enc.title')}
+        </span>
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', status.cls)}>{status.text}</span>
+      </div>
+      <p className="text-caption text-text-muted">{t('settings.admin.backup.enc.description')}</p>
+
+      {cfg.secrets_unavailable ? (
+        <p className="text-xs text-danger">{t('settings.admin.backup.enc.secretsUnavailable')}</p>
+      ) : !editing && (cfg.encrypted || cfg.passphrase_unreadable) ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-elevated px-3 text-xs font-medium text-text-secondary hover:bg-hover hover:text-text-primary"
+          >
+            <KeyRound className="h-3.5 w-3.5" strokeWidth={1.75} />
+            {t('settings.admin.backup.enc.change')}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm(t('settings.admin.backup.enc.removeConfirm'))) void submit('')
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-elevated px-3 text-xs font-medium text-danger hover:bg-hover disabled:opacity-60"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+            {t('settings.admin.backup.enc.remove')}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="flex items-center gap-1">
+              <input
+                type={show ? 'text' : 'password'}
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                placeholder={t('settings.admin.backup.enc.passphrase', { n: minLen })}
+                autoComplete="new-password"
+                aria-label={t('settings.admin.backup.enc.passphrase', { n: minLen })}
+                className={inputCls}
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                className="rounded-md border border-border p-1.5 text-text-muted hover:text-text-primary"
+                aria-label={show ? t('common.hide') : t('common.show')}
+              >
+                {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <input
+              type={show ? 'text' : 'password'}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder={t('settings.admin.backup.enc.confirm')}
+              autoComplete="new-password"
+              aria-label={t('settings.admin.backup.enc.confirm')}
+              className={inputCls}
+            />
+          </div>
+          {tooShort && <p className="text-xs text-warn">{t('settings.admin.backup.enc.tooShort', { n: minLen })}</p>}
+          {mismatch && <p className="text-xs text-warn">{t('settings.admin.backup.enc.mismatch')}</p>}
+          <p className="text-caption text-text-muted">{t('settings.admin.backup.enc.keepIt')}</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => void submit(pass)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-canvas disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+              {t('common.save')}
+            </button>
+            {editing && (
+              <button
+                type="button"
+                onClick={() => { setEditing(false); setPass(''); setConfirm('') }}
+                className="inline-flex h-8 items-center rounded-lg border border-border bg-elevated px-3 text-xs font-medium text-text-secondary hover:bg-hover"
+              >
+                {t('common.cancel')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {cfg.encrypted && (
+        <div className="space-y-1">
+          <p className="text-caption text-text-muted">{t('settings.admin.backup.enc.decryptHint')}</p>
+          <code className="block overflow-x-auto whitespace-pre rounded-md bg-elevated px-2 py-1.5 font-mono text-[11px] text-text-secondary">
+            openssl enc -d -aes-256-cbc -pbkdf2 -md sha256 -iter 600000 -in netpulse-….tar.gz.enc -out netpulse.tar.gz
+          </code>
+        </div>
+      )}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
     </div>
   )
 }

@@ -406,7 +406,9 @@
     "tunnelIp": "IP túnel",
     "roleExternal": "Externo",
     "leaseExpired": "Caducada",
-    "leaseRenewsDays": "renueva en {{d}}d {{h}}h {{min}}min"
+    "leaseRenewsDays": "renueva en {{d}}d {{h}}h {{min}}min",
+    "show": "Mostrar",
+    "hide": "Ocultar"
   },
   "devices": {
     "badges": {
@@ -1609,7 +1611,24 @@
         "saveError": "No se pudieron guardar los ajustes",
         "error": "No se pudo hacer el respaldo",
         "done": "Respaldo creado correctamente",
-        "scope": "Cada respaldo incluye la base de datos, la clave SSH y el material TLS, para poder restaurarlo en otro equipo"
+        "scope": "Cada respaldo incluye la base de datos, la clave SSH, el material TLS y la clave que abre las credenciales guardadas de los canales, para poder restaurarlo en otro equipo",
+        "enc": {
+          "title": "Cifrado",
+          "description": "Con una frase de paso, todos los respaldos, programados o exportados, se cifran con AES-256 y pueden abrirse sin NetPulse con openssl. Sin ella, los respaldos llevan en claro las claves privadas SSH y TLS y todos los secretos guardados.",
+          "on": "Cifrado",
+          "off": "Sin cifrar",
+          "unreadable": "Frase ilegible: vuelve a introducirla",
+          "passphrase": "Frase de paso (al menos {{n}} caracteres)",
+          "confirm": "Repite la frase de paso",
+          "tooShort": "Al menos {{n}} caracteres",
+          "mismatch": "Las dos entradas no coinciden",
+          "keepIt": "Guarda la frase en un lugar seguro: sin ella nadie, ni tú, puede abrir los respaldos. Cambiarla no vuelve a cifrar los respaldos ya escritos.",
+          "change": "Cambiar frase",
+          "remove": "Quitar cifrado",
+          "removeConfirm": "Los respaldos que se escriban a partir de ahora irán sin cifrar. ¿Continuar?",
+          "decryptHint": "Para abrir un respaldo sin NetPulse:",
+          "secretsUnavailable": "Este servidor no puede abrir su clave de cifrado (secrets.key en el directorio de datos), así que no puede guardar una frase. Mira el log de arranque."
+        }
       },
       "orchestration": "Orquestación de red"
     },

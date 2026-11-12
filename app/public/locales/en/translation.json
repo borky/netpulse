@@ -406,7 +406,9 @@
     "tunnelIp": "Tunnel IP",
     "roleExternal": "External",
     "leaseExpired": "Expired",
-    "leaseRenewsDays": "renews in {{d}}d {{h}}h {{min}}min"
+    "leaseRenewsDays": "renews in {{d}}d {{h}}h {{min}}min",
+    "show": "Show",
+    "hide": "Hide"
   },
   "devices": {
     "badges": {
@@ -1609,7 +1611,24 @@
         "saveError": "Could not save settings",
         "error": "Could not create backup",
         "done": "Backup created successfully",
-        "scope": "Each backup holds the database, the SSH key and the TLS material, so it can be restored on another host"
+        "scope": "Each backup holds the database, the SSH key, the TLS material and the key that opens stored channel credentials, so it can be restored on another host",
+        "enc": {
+          "title": "Encryption",
+          "description": "With a passphrase, every backup, scheduled or exported, is encrypted with AES-256 and can be opened without NetPulse using openssl. Without one, backups hold the SSH and TLS private keys and every stored secret in the clear.",
+          "on": "Encrypted",
+          "off": "Not encrypted",
+          "unreadable": "Passphrase unreadable: set it again",
+          "passphrase": "Passphrase (at least {{n}} characters)",
+          "confirm": "Repeat the passphrase",
+          "tooShort": "At least {{n}} characters",
+          "mismatch": "The two entries differ",
+          "keepIt": "Keep the passphrase somewhere safe: without it no backup can be opened, by you or anyone. Changing it does not re-encrypt backups already written.",
+          "change": "Change passphrase",
+          "remove": "Remove encryption",
+          "removeConfirm": "Backups written from now on will be unencrypted. Continue?",
+          "decryptHint": "To open a backup without NetPulse:",
+          "secretsUnavailable": "This server cannot open its encryption key (secrets.key in the data directory), so a passphrase cannot be stored. See the startup log."
+        }
       },
       "orchestration": "Network orchestration"
     },
