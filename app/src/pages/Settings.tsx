@@ -3178,6 +3178,71 @@ function AlertRetentionRow({ onSaved }: { onSaved: () => void }) {
   )
 }
 
+// Retention of the 5-minute traffic buckets (kv history.traffic_5m_days via
+// /api/settings/thresholds, 7-365 days, default 90 since #1862). Both
+// purges reread it on every pass, so a change applies without a restart.
+function TrafficRetentionRow({ onSaved }: { onSaved: () => void }) {
+  const { t } = useTranslation()
+  const { isDemo } = useNetPulse()
+  const [days, setDays] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isDemo) {
+      setDays(90)
+      return
+    }
+    let cancelled = false
+    fetch('/api/settings/thresholds')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j && typeof j.trafficBucketDays === 'number') setDays(j.trafficBucketDays)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isDemo])
+
+  if (days === null) return null
+
+  // Typing passes through values out of range (a "1" on the way to "120"),
+  // so the field keeps what is typed and only an in-range value is sent.
+  const save = (raw: number) => {
+    if (!Number.isFinite(raw)) return
+    const v = Math.round(raw)
+    setDays(v)
+    if (v < 7 || v > 365) return
+    onSaved()
+    if (isDemo) return
+    void fetch('/api/settings/thresholds', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trafficBucketDays: v }),
+    }).catch(() => {})
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1 text-sm font-medium text-text-primary">
+          {t('settings.data.trafficRetention')}
+          <InfoTip text={t('settings.data.trafficRetentionHint')} />
+        </div>
+        <div className="mt-0.5 text-caption text-text-muted">{t('settings.data.trafficRetentionCaption')}</div>
+      </div>
+      <input
+        type="number"
+        min={7}
+        max={365}
+        value={days}
+        onChange={(e) => save(Number(e.target.value))}
+        aria-label={t('settings.data.trafficRetention')}
+        className="w-24 rounded-lg border border-border bg-elevated px-3 py-2 text-right text-sm text-text-primary focus:border-accent focus:outline-none"
+      />
+    </div>
+  )
+}
+
 function BackupsPanel() {
   const { t } = useTranslation()
   const [cfg, setCfg] = useState<{ enabled: boolean; frequency_h: number; retention_days: number; last_run: string; time: string } | null>(null)
@@ -6313,6 +6378,7 @@ export default function Settings() {
                     retención de presencia (#771) e ingesta de itinerancia (#907) */}
                 <LimitHistoryRow onSaved={notify} />
                 <AlertRetentionRow onSaved={notify} />
+                <TrafficRetentionRow onSaved={notify} />
               </div>
 
               {/* Sliders de umbrales */}
