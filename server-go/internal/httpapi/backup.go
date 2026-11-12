@@ -198,6 +198,9 @@ func (s *server) runBackup() (string, error) {
 
 // backupLoop es el bucle periódico de backups automáticos (#741).
 func (s *server) backupLoop(ctx context.Context, tickEvery time.Duration) {
+	s.backupMu.Lock()
+	cleanBackupLeftovers(filepath.Join(filepath.Dir(s.db.Path), "backups"))
+	s.backupMu.Unlock()
 	ticker := time.NewTicker(tickEvery)
 	defer ticker.Stop()
 	for {
@@ -370,14 +373,19 @@ func (s *server) registerBackupRoutes(mux *http.ServeMux) {
 			return
 		}
 		name := backupArchiveName(time.Now().UTC().Format("20060102-150405"), pass != "")
-		// A name the purge does not match, so a half-written export is
-		// never mistaken for a backup.
-		tmpFile := filepath.Join(backupDir, "export-"+name+".partial")
+		// Each export builds in a directory of its own, so concurrent
+		// exports never share a file, and the purge never sees it.
+		exportDir, err := os.MkdirTemp(backupDir, exportDirPrefix+"*")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "backup_error")
+			return
+		}
+		defer os.RemoveAll(exportDir)
+		tmpFile := filepath.Join(exportDir, name)
 		if err := writeBackupArchive(s.db.DB, filepath.Dir(s.db.Path), s.db.Path, tmpFile, pass); err != nil {
 			writeError(w, http.StatusInternalServerError, "backup_error")
 			return
 		}
-		defer os.Remove(tmpFile)
 
 		if u := auth.UserFromContext(r.Context()); u != nil {
 			log.Printf("[netpulse] backup: full archive download (encrypted=%t) by admin %s", pass != "", u.Username)
@@ -441,14 +449,21 @@ func writeBackupArchive(d *sql.DB, dataDir, dbPath, dst, pass string) error {
 	// que ya no cuadraba (archive/tar: write too long) y, aunque cuadrara, el
 	// .db solo puede venir sin transacciones que aún viven en el WAL. El
 	// snapshot tiene tamaño fijo y es una base válida por sí sola.
-	snapshot := tmp + ".db"
-	if err := os.Remove(snapshot); err != nil && !os.IsNotExist(err) {
+	//
+	// FORK: the snapshot is the whole database in the clear, so it goes in a
+	// directory of its own (0700, unique per call) that is removed when done,
+	// and cleanBackupLeftovers removes one a crash left behind. Next to dst
+	// with a fixed name, two exports in the same second shared it, and a
+	// crash left a plaintext copy beside encrypted backups.
+	snapDir, err := os.MkdirTemp(filepath.Dir(dst), snapshotDirPrefix+"*")
+	if err != nil {
 		return fail(err)
 	}
+	defer os.RemoveAll(snapDir)
+	snapshot := filepath.Join(snapDir, "netpulse.db")
 	if _, err := d.Exec("VACUUM INTO ?", snapshot); err != nil {
 		return fail(err)
 	}
-	defer os.Remove(snapshot)
 
 	var sink io.Writer = out
 	var enc io.WriteCloser
@@ -627,4 +642,30 @@ func fileSizeHuman(path string) string {
 func fileExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+// Prefixes of the private directories a backup and an export build in.
+const (
+	snapshotDirPrefix = ".snapshot-"
+	exportDirPrefix   = ".export-"
+)
+
+// cleanBackupLeftovers removes what an interrupted backup or export left in
+// the backups directory: the private build directories (a plaintext
+// database snapshot among them) and half-written archives (*.tmp). Run at
+// start, before any backup can be in progress.
+func cleanBackupLeftovers(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		n := e.Name()
+		switch {
+		case e.IsDir() && (strings.HasPrefix(n, snapshotDirPrefix) || strings.HasPrefix(n, exportDirPrefix)):
+			_ = os.RemoveAll(filepath.Join(dir, n))
+		case !e.IsDir() && (strings.HasSuffix(n, ".tmp") || strings.HasSuffix(n, ".tmp.db")):
+			_ = os.Remove(filepath.Join(dir, n))
+		}
+	}
 }
