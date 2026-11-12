@@ -36,10 +36,10 @@ func TestPurge5mFollowsTheConfiguredRetention(t *testing.T) {
 	if _, err := s.db.Exec(`CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`INSERT INTO kv (key, value) VALUES (?, '30')`, retention.KeyTrafficBucketDays); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO kv (key, value) VALUES (?, '40')`, retention.KeyTrafficBucketDays); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := s.Purge5m(); err != nil || n != 1 {
-		t.Fatalf("30-day retention purged %d (err %v), want 1", n, err)
+		t.Fatalf("40-day retention purged %d (err %v), want 1", n, err)
 	}
 }

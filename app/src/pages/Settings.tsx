@@ -3185,17 +3185,23 @@ function TrafficRetentionRow({ onSaved }: { onSaved: () => void }) {
   const { t } = useTranslation()
   const { isDemo } = useNetPulse()
   const [days, setDays] = useState<number | null>(null)
+  // What the server has stored, to restore an out-of-range entry.
+  const [saved, setSaved] = useState<number | null>(null)
 
   useEffect(() => {
     if (isDemo) {
       setDays(90)
+      setSaved(90)
       return
     }
     let cancelled = false
     fetch('/api/settings/thresholds')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        if (!cancelled && j && typeof j.trafficBucketDays === 'number') setDays(j.trafficBucketDays)
+        if (!cancelled && j && typeof j.trafficBucketDays === 'number') {
+          setDays(j.trafficBucketDays)
+          setSaved(j.trafficBucketDays)
+        }
       })
       .catch(() => {})
     return () => {
@@ -3205,13 +3211,18 @@ function TrafficRetentionRow({ onSaved }: { onSaved: () => void }) {
 
   if (days === null) return null
 
-  // Typing passes through values out of range (a "1" on the way to "120"),
-  // so the field keeps what is typed and only an in-range value is sent.
-  const save = (raw: number) => {
-    if (!Number.isFinite(raw)) return
-    const v = Math.round(raw)
-    setDays(v)
-    if (v < 7 || v > 365) return
+  // Saved on blur or Enter, never per keystroke: typing "365" passes
+  // through 3 and 36, and a purge between two saves would delete history
+  // for good. An out-of-range entry snaps back to what is stored.
+  const commit = () => {
+    if (days === null) return
+    const v = Math.round(days)
+    if (!Number.isFinite(v) || v < 36 || v > 365) {
+      setDays(saved)
+      return
+    }
+    if (v === saved) return
+    setSaved(v)
     onSaved()
     if (isDemo) return
     void fetch('/api/settings/thresholds', {
@@ -3232,10 +3243,12 @@ function TrafficRetentionRow({ onSaved }: { onSaved: () => void }) {
       </div>
       <input
         type="number"
-        min={7}
+        min={36}
         max={365}
         value={days}
-        onChange={(e) => save(Number(e.target.value))}
+        onChange={(e) => setDays(Number(e.target.value))}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit() }}
         aria-label={t('settings.data.trafficRetention')}
         className="w-24 rounded-lg border border-border bg-elevated px-3 py-2 text-right text-sm text-text-primary focus:border-accent focus:outline-none"
       />

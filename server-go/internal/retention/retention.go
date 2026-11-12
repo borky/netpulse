@@ -18,10 +18,12 @@ const (
 	KeyTrafficBucketDays = "history.traffic_5m_days"
 	// DefaultTrafficBucketDays is #1862's value, used when nothing is set.
 	DefaultTrafficBucketDays = 90
-	// MinTrafficBucketDays and MaxTrafficBucketDays bound the setting: below
-	// a week the 5m buckets would not outlive the raw samples they are
-	// rolled up from, and a year is what #1862 found too much for its disk.
-	MinTrafficBucketDays = 7
+	// MinTrafficBucketDays and MaxTrafficBucketDays bound the setting. The
+	// nightly job rebuilds the daily totals of the last 35 days from the 5m
+	// buckets (Rollup5mToDaily, INSERT OR REPLACE): with fewer days kept, a
+	// day partly purged would be rebuilt short and its total lost for good.
+	// A year is what #1862 found too much for its disk.
+	MinTrafficBucketDays = 36
 	MaxTrafficBucketDays = 365
 )
 
