@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"strings"
 	"testing"
 )
 
@@ -54,6 +55,11 @@ func TestOpenKeepsBinaryName(t *testing.T) {
 func TestEmbeddedAgentsAreUpxPacked(t *testing.T) {
 	if !HasBinaries() {
 		t.Skip("sin binarios embebidos (árbol de desarrollo)")
+	}
+	// A build made with NETPULSE_AGENT_UPX=0 records it; the size limit
+	// below does not apply to it by design.
+	if b, err := fs.ReadFile(agentsFS, "agents/agent.packing"); err == nil && strings.TrimSpace(string(b)) == "none" {
+		t.Skip("agents built unpacked on purpose (NETPULSE_AGENT_UPX=0)")
 	}
 	for _, arch := range []string{"amd64", "arm64", "arm", "mipsle", "mips"} {
 		f, err := Open(arch)
