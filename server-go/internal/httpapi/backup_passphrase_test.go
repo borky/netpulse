@@ -52,3 +52,35 @@ func TestBackupPassphraseSettingsAndDownload(t *testing.T) {
 		t.Fatalf("clear: %d %v", res.StatusCode, body)
 	}
 }
+
+// Two exports at once each get a whole archive: they no longer share a
+// temporary file named after the second they started in.
+func TestConcurrentBackupDownloads(t *testing.T) {
+	srv := makeTestServer(t)
+	_, cookie, _ := loginCookie(t, srv.URL, "admin", "test123456")
+	type result struct {
+		code int
+		n    int
+	}
+	out := make(chan result, 4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			req, _ := http.NewRequest("GET", srv.URL+"/api/backup/download", nil)
+			req.AddCookie(&http.Cookie{Name: "session", Value: cookie})
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				out <- result{}
+				return
+			}
+			b, _ := io.ReadAll(res.Body)
+			res.Body.Close()
+			out <- result{res.StatusCode, len(b)}
+		}()
+	}
+	for i := 0; i < 4; i++ {
+		r := <-out
+		if r.code != http.StatusOK || r.n == 0 {
+			t.Fatalf("download %d: status %d, %d bytes", i, r.code, r.n)
+		}
+	}
+}

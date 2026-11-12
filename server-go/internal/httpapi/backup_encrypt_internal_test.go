@@ -152,3 +152,44 @@ func TestUnreadablePassphraseFailsClosed(t *testing.T) {
 		t.Fatalf("view %+v", v)
 	}
 }
+
+// Nothing but the archive stays in backups/: the plaintext snapshot and the
+// half-written file are gone once a backup is written.
+func TestEncryptedBackupLeavesNoPlaintext(t *testing.T) {
+	s, dataDir := newSealedBackupServer(t)
+	setBackupPassphrase(t, s, testBackupPass)
+	dst, err := s.runBackup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(filepath.Join(dataDir, "backups"))
+	for _, e := range entries {
+		if e.Name() != filepath.Base(dst) {
+			t.Fatalf("left behind in backups/: %s", e.Name())
+		}
+	}
+}
+
+func TestCleanBackupLeftovers(t *testing.T) {
+	dir := t.TempDir()
+	keep := []string{"netpulse-20260101-000000.tar.gz", "netpulse-20260101-000000.tar.gz.enc"}
+	for _, n := range append([]string{"netpulse-x.tar.gz.tmp", "netpulse-x.tar.gz.tmp.db"}, keep...) {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, d := range []string{snapshotDirPrefix + "1", exportDirPrefix + "2"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cleanBackupLeftovers(dir)
+	entries, _ := os.ReadDir(dir)
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	if len(left) != len(keep) || !hasEntry(left, keep[0]) || !hasEntry(left, keep[1]) {
+		t.Fatalf("after cleanup: %v, want only %v", left, keep)
+	}
+}
