@@ -102,6 +102,14 @@ Read and accepted at the 2026-10-25 sync (v2.47.0):
   tested in `uciwireless_secrets_test.go`). Generic, worth offering.
 - The agent's firmware-backup upload (#1462) goes to the agent's own server.
 
+Read at the 2026-11-12 sync (v2.52.0): no new outbound destination; the only
+new URLs are RTLPlayground documentation links. The no-call-home guard now
+also allows the `Maintainer:` line of the agent `.ipk` control file the
+server generates (#1476), which names the project's domain as package
+metadata, not a request. Upstream fixed the Proxmox TLS cache itself (#1880),
+so the fork's patch for it was dropped. The agent (3.0.41) gains no new
+command the server can send.
+
 Read and accepted at the 2026-11-02 sync (v2.50.0):
 
 - **Integrations vendor catalog** (#1697): opening the new Integrations page
@@ -172,6 +180,10 @@ too. The 2026-10-01 sync lost the UniFi half of two Proxmox commits that way
 |---|---|
 | **Instance telemetry never wired** — `server-go/cmd/netpulse/main.go` does not import `internal/telemetry` | This fork sends no identifying data anywhere. Upstream's ping (#822) is on by default and carries a persistent instance id. See below. |
 | **Deleting a router removes its NetGrip executor token** — one line in `handleDeleteConfigRouter` | Upstream #1291 deletes the agent state and token but leaves the executor token. Since upstream #1595 nothing sends that token, so this is housekeeping only: a router re-added under the same id does not inherit a stale one. Generic cleanup, worth offering. |
+| **The agent install line never runs an unverified installer** — the install-line builder in `httpapi/agent.go` | Upstream #1737 retries a failed `wget --ca-certificate` with `--no-check-certificate` and runs what it fetched as root; that script applies the server pin, so a substituted one skips it. The fork fails with a message instead. Worth reporting. |
+| **Backups: passphrase encryption, `secrets.key` included, export = scheduled archive** — `internal/backupcrypt`, `httpapi/backup.go`, Settings > Backups | Encryption is pfSense/OPNsense-style, OpenSSL `enc` format (AES-256-CBC, PBKDF2-SHA256, 600000 iterations), passphrase sealed with kvseal. `secrets.key` is fork-only (kvseal). The export endpoint upstream copies the live DB file alone, which under WAL (#1700) can miss recent writes: that part is a generic fix worth offering. |
+| **Agents can be built without UPX** — `NETPULSE_AGENT_UPX=0` in `scripts/build-agents.sh`, `agents/agent.packing` read by the packing test | Upstream #1890 requires upx on every build host. Default unchanged (packed). Generic, worth offering. |
+| **5-minute traffic retention is a setting** — `internal/retention`, kv `history.traffic_5m_days` (7-365, default 90) via `/api/settings/thresholds` | Upstream #1862 fixed it at 90 days for one container's disk. Generic, worth offering. |
 | **An agent-fed usteer AP with no clients sends `[]`** — one field in `usteerAPsFromPayload` | Upstream #1431 leaves `clients` nil for an AP nobody is attached to, so `/api/usteer` sends `null`; the Roaming page iterates it unguarded, throws, and with no error boundary the whole page goes blank. The SSH path already starts with `[]`. An upstream bug, worth reporting; drop this row once upstream fixes it. |
 
 ### Why telemetry is unwired, not deleted
