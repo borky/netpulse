@@ -41,6 +41,8 @@ bin/
 server-go/internal/agentbin/agents/netpulse-agent-*
 # Version stamp written by scripts/build-agents.sh (#1914).
 server-go/internal/agentbin/agents/agent.version
+# Packing choice written by scripts/build-agents.sh (NETPULSE_AGENT_UPX).
+server-go/internal/agentbin/agents/agent.packing
 .worktrees/
 
 # Rutas prerenderizadas por idioma (generadas, ver web/build-langs.mjs)

@@ -5,9 +5,15 @@
 #
 # Usage: scripts/build-agents.sh <agent-version> [output-dir]
 #
-#   UPX_BIN    upx binary to use (default: upx from PATH)
-#   UPX_FLAGS  packing flags (default: --best --lzma)
-#   GO         go binary (default: go from PATH)
+#   UPX_BIN            upx binary to use (default: upx from PATH)
+#   UPX_FLAGS          packing flags (default: --best --lzma)
+#   GO                 go binary (default: go from PATH)
+#   NETPULSE_AGENT_UPX 1 (default) packs; 0 leaves the binaries unpacked,
+#                      for a build host without upx. An unpacked agent is
+#                      7-9 MB and needs twice that free on a router to
+#                      upgrade, so only use it when no small router takes
+#                      its agent from this server. The choice is recorded in
+#                      agent.packing next to the binaries.
 #
 # The packed binaries are the ones served by /api/agents/{slug}/binary and
 # shipped in the release tarballs, so their sha256 (computed by the server at
@@ -18,14 +24,23 @@ VERSION=${1:?usage: build-agents.sh <agent-version> [output-dir]}
 OUT=${2:-server-go/internal/agentbin/agents}
 UPX_BIN=${UPX_BIN:-upx}
 UPX_FLAGS=${UPX_FLAGS:---best --lzma}
+PACK=${NETPULSE_AGENT_UPX:-1}
+case "$PACK" in
+	0 | 1) ;;
+	*)
+		echo "build-agents: NETPULSE_AGENT_UPX must be 0 or 1, got '$PACK'" >&2
+		exit 1
+		;;
+esac
 GO=${GO:-go}
 
 cd "$(dirname "$0")/.."
 
-if ! command -v "$UPX_BIN" >/dev/null 2>&1; then
+if [ "$PACK" = 1 ] && ! command -v "$UPX_BIN" >/dev/null 2>&1; then
 	echo "build-agents: $UPX_BIN is not in PATH. Install it (pacman -S upx, apt install upx-ucl," >&2
 	echo "  dnf install upx) or point UPX_BIN at the binary. The agents are UPX packed on" >&2
 	echo "  purpose: an unpacked agent needs twice its size free to upgrade (#1890)." >&2
+	echo "  NETPULSE_AGENT_UPX=0 builds them unpacked instead." >&2
 	exit 1
 fi
 
@@ -53,8 +68,10 @@ build arm "GOARM=7"
 build mipsle "GOMIPS=softfloat"
 build mips "GOMIPS=softfloat"
 
-# shellcheck disable=SC2086: the flags are a list on purpose
-"$UPX_BIN" -q -f $UPX_FLAGS "$OUT"/netpulse-agent-* >/dev/null
+if [ "$PACK" = 1 ]; then
+	# shellcheck disable=SC2086: the flags are a list on purpose
+	"$UPX_BIN" -q -f $UPX_FLAGS "$OUT"/netpulse-agent-* >/dev/null
+fi
 
 # Gate: every binary must be packed, pass UPX's own integrity test and stay
 # well under the unpacked size. An unpacked release is a regression of #1890,
@@ -63,6 +80,7 @@ build mips "GOMIPS=softfloat"
 for arch in amd64 arm64 arm mipsle mips; do
 	bin="$OUT/netpulse-agent-$arch"
 	[ -s "$bin" ] || { echo "build-agents: missing $bin" >&2; exit 1; }
+	[ "$PACK" = 1 ] || continue
 	# UPX keeps a valid ELF header and writes its marker at the tail.
 	if ! tail -c 256 "$bin" | grep -qa "UPX!"; then
 		echo "build-agents: $bin is not UPX packed" >&2
@@ -75,5 +93,8 @@ done
 # guard cannot find it by scanning the embedded bytes. The stamp keeps that
 # check working without unpacking at runtime (#1914).
 printf '%s\n' "$VERSION" > "$OUT/agent.version"
+# Whether the binaries were packed: the agentbin test checks packing only
+# for a build that says it packed.
+if [ "$PACK" = 1 ]; then echo upx; else echo none; fi > "$OUT/agent.packing"
 
 ls -l "$OUT"/netpulse-agent-*
