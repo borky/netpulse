@@ -1706,7 +1706,7 @@
       "alertRetentionCaption": "Entries older than this many days are pruned",
       "alertRetentionHint": "Days the server keeps each alert log entry (pruned hourly, in addition to the 500-entry cap). 0 keeps them with no time limit.",
       "trafficRetention": "Traffic history (5-minute detail)",
-      "trafficRetentionCaption": "Days of 5-minute traffic detail kept, 7-365",
+      "trafficRetentionCaption": "Days of 5-minute traffic detail kept, 36-365",
       "trafficRetentionHint": "Per-client and per-port traffic in 5-minute buckets. Older detail is pruned nightly; the daily totals are kept regardless. More days means a bigger database.",
       "limitHistoryCaption": "Prunes old presence and roaming events",
       "limitHistoryHint": "When on, the server prunes events older than the configured retention every hour. When off, retention is unlimited (the history grows unpruned). The roaming ingest interval is independent and always applies.",

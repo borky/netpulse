@@ -16,7 +16,7 @@ func TestTrafficBucketRetentionSetting(t *testing.T) {
 	if res.StatusCode != http.StatusOK || body["trafficBucketDays"] != float64(180) {
 		t.Fatalf("PUT 180: %d %v", res.StatusCode, body)
 	}
-	for _, bad := range []string{`{"trafficBucketDays":6}`, `{"trafficBucketDays":366}`} {
+	for _, bad := range []string{`{"trafficBucketDays":35}`, `{"trafficBucketDays":366}`} {
 		if res, _ := wanSpeedRequest(t, "PUT", srv.URL, "/api/settings/thresholds", cookie, bad); res.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", bad, res.StatusCode)
 		}

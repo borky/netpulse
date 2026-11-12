@@ -26,8 +26,8 @@ func TestTrafficBucketDays(t *testing.T) {
 		}
 	}
 	for v, want := range map[string]int{
-		"180": 180, "7": 7, "365": 365,
-		"6": DefaultTrafficBucketDays, "366": DefaultTrafficBucketDays, "x": DefaultTrafficBucketDays,
+		"180": 180, "36": 36, "365": 365,
+		"35": DefaultTrafficBucketDays, "7": DefaultTrafficBucketDays, "366": DefaultTrafficBucketDays, "x": DefaultTrafficBucketDays,
 	} {
 		set(v)
 		if got := TrafficBucketDays(db); got != want {
