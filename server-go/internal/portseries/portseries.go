@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/gnacho/netpulse/server-go/internal/retention"
 )
 
 const (
@@ -490,9 +492,10 @@ func (s *Store) PurgeRaw() (int64, error) {
 	return res.RowsAffected()
 }
 
-// Purge5m deletes 5-m buckets older than retention.
+// Purge5m deletes 5-m buckets older than retention, as configured in kv
+// (retention.KeyTrafficBucketDays; BucketRetentionMS is its default).
 func (s *Store) Purge5m() (int64, error) {
-	cutoff := time.Now().UnixMilli() - BucketRetentionMS
+	cutoff := time.Now().Add(-retention.TrafficBucket(s.db)).UnixMilli()
 	res, err := s.db.Exec("DELETE FROM port_series_5m WHERE bucket_ts < ?", cutoff)
 	if err != nil {
 		return 0, err

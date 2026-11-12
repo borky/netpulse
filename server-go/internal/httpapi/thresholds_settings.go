@@ -5,11 +5,13 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gnacho/netpulse/server-go/internal/alerts"
 	"github.com/gnacho/netpulse/server-go/internal/auth"
+	"github.com/gnacho/netpulse/server-go/internal/retention"
 )
 
 func (s *server) registerThresholdsRoutes(mux *http.ServeMux) {
@@ -21,6 +23,7 @@ func (s *server) registerThresholdsRoutes(mux *http.ServeMux) {
 			"weakSignalResolveSamples": alerts.WeakSignalResolveSamples(s.db.DB),
 			"alertRetentionDays":       alerts.RetentionDays(s.db.DB),
 			"hideRecoveryEvents":       alerts.HideRecoveryEvents(s.db.DB),
+			"trafficBucketDays":        retention.TrafficBucketDays(s.db.DB),
 		})
 	})))
 
@@ -31,6 +34,7 @@ func (s *server) registerThresholdsRoutes(mux *http.ServeMux) {
 			WeakSignalResolveSamples *int  `json:"weakSignalResolveSamples"`
 			AlertRetentionDays       *int  `json:"alertRetentionDays"`
 			HideRecoveryEvents       *bool `json:"hideRecoveryEvents"`
+			TrafficBucketDays        *int  `json:"trafficBucketDays"`
 		}
 		if st := readJSONBody(w, r, &body); st != 0 {
 			writeBodyError(w, st, "invalid_body", "body JSON inválido")
@@ -81,6 +85,19 @@ func (s *server) registerThresholdsRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
+		// Retention of the 5-minute traffic buckets (default 90 days, #1862).
+		// Both purges read it on every pass: no restart needed.
+		if body.TrafficBucketDays != nil {
+			if !retention.ValidTrafficBucketDays(*body.TrafficBucketDays) {
+				writeError(w, http.StatusBadRequest, "invalid_value", fmt.Sprintf("trafficBucketDays must be between %d and %d",
+					retention.MinTrafficBucketDays, retention.MaxTrafficBucketDays))
+				return
+			}
+			if err := kv.Set(retention.KeyTrafficBucketDays, strconv.Itoa(*body.TrafficBucketDays)); err != nil {
+				writeError(w, http.StatusInternalServerError, "kv_error", err.Error())
+				return
+			}
+		}
 		// #1518: ocultar del feed y del contador de no leídas los eventos de
 		// recuperación (severity ok). Efecto sin reinicio: List() y
 		// UnreadCount() leen el kv en cada llamada; NotifyChange re-emite el
@@ -104,6 +121,7 @@ func (s *server) registerThresholdsRoutes(mux *http.ServeMux) {
 			"weakSignalResolveSamples": alerts.WeakSignalResolveSamples(s.db.DB),
 			"alertRetentionDays":       alerts.RetentionDays(s.db.DB),
 			"hideRecoveryEvents":       alerts.HideRecoveryEvents(s.db.DB),
+			"trafficBucketDays":        retention.TrafficBucketDays(s.db.DB),
 		})
 	})))
 }

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"log"
 	"time"
+
+	"github.com/gnacho/netpulse/server-go/internal/retention"
 )
 
 const (
@@ -353,7 +355,9 @@ func (s *Store) Purge() error {
 	}
 	now := time.Now()
 	rawCutoff := now.Add(-time.Duration(RawRetentionMS) * time.Millisecond).UnixMilli()
-	bucketCutoff := now.Add(-time.Duration(BucketRetentionMS) * time.Millisecond).UnixMilli()
+	// Configurable in kv (retention.KeyTrafficBucketDays); BucketRetentionMS
+	// is its default.
+	bucketCutoff := now.Add(-retention.TrafficBucket(s.db)).UnixMilli()
 	_, _ = s.db.Exec("DELETE FROM client_bw_raw WHERE ts < ?", rawCutoff)
 	_, _ = s.db.Exec("DELETE FROM client_bw_5m WHERE bucket_ts < ?", bucketCutoff)
 	return nil
