@@ -568,6 +568,9 @@ This is the largest screen. Main sections:
 - **Services**: which services are shown (AdGuard, WireGuard) and the Orchestration toggle.
 - **Notifications**: alert badge, pulsing dots and sound, and the channels that forward alerts: ntfy, Telegram and Matrix (its homeserver URL, room id and token are stored encrypted with `secrets.key` in the data directory).
 - **Administration** (admin only, live): check for updates, backups, users and demo mode.
+  A backup (scheduled or exported) is one archive holding the database, the SSH key, the TLS material and `secrets.key`. With a backup passphrase set, it is encrypted with AES-256 in OpenSSL's format (`.tar.gz.enc`) and opens without NetPulse:
+  `openssl enc -d -aes-256-cbc -pbkdf2 -md sha256 -iter 600000 -in netpulse-<date>.tar.gz.enc -out netpulse.tar.gz`.
+  Without a passphrase the archive holds every private key and stored secret in the clear. Keep the passphrase safe: a lost one cannot be recovered, and changing it does not re-encrypt backups already written.
 - **Devices** (admin only): add/edit/delete routers, SSH public key, firmware target and SNMP config.
 - **Topology overrides** and **Trusted devices** (admin only).
 - **Agent adoption**: pairing token and server fingerprint.

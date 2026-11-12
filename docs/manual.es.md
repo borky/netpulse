@@ -568,6 +568,9 @@ Es la pantalla más grande. Secciones principales:
 - **Servicios**: qué servicios se muestran (AdGuard, WireGuard) y el interruptor de Orquestación.
 - **Notificaciones**: badge de alertas, puntos pulsantes y sonido, y los canales que reenvían las alertas: ntfy, Telegram y Matrix (su URL del homeserver, id de sala y token se guardan cifrados con `secrets.key` en el directorio de datos).
 - **Administración** (solo admin, en vivo): comprobar actualizaciones, respaldos, usuarios y modo demo.
+  Un respaldo (programado o exportado) es un único archivo con la base de datos, la clave SSH, el material TLS y `secrets.key`. Con una frase de paso de respaldo, se cifra con AES-256 en el formato de OpenSSL (`.tar.gz.enc`) y se abre sin NetPulse:
+  `openssl enc -d -aes-256-cbc -pbkdf2 -md sha256 -iter 600000 -in netpulse-<fecha>.tar.gz.enc -out netpulse.tar.gz`.
+  Sin frase, el archivo lleva en claro todas las claves privadas y los secretos guardados. Guarda bien la frase: perdida no se puede recuperar, y cambiarla no vuelve a cifrar los respaldos ya escritos.
 - **Dispositivos** (solo admin): alta/edición/borrado de routers, clave pública SSH, target de firmware y configuración SNMP.
 - **Overrides de topología** y **Dispositivos de confianza** (solo admin).
 - **Adopción de agentes**: token de emparejamiento y huella del servidor.

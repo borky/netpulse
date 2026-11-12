@@ -11,6 +11,7 @@ import (
 	"compress/gzip"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -21,7 +22,9 @@ import (
 	"time"
 
 	"github.com/gnacho/netpulse/server-go/internal/auth"
+	"github.com/gnacho/netpulse/server-go/internal/backupcrypt"
 	"github.com/gnacho/netpulse/server-go/internal/db"
+	"github.com/gnacho/netpulse/server-go/internal/kvseal"
 )
 
 const (
@@ -30,6 +33,10 @@ const (
 	kvBackupRetentionDays = "backup.retention_days"
 	kvBackupLastRun       = "backup.last_run"
 	kvBackupTime          = "backup.time"
+	// kvBackupPassphrase (fork): the backup passphrase, sealed with kvseal.
+	// Set, every backup is encrypted (backupcrypt); absent, backups are
+	// plain archives as upstream writes them.
+	kvBackupPassphrase = "backup.passphrase"
 
 	// backupTickEvery: cadencia del bucle. Corta a propósito: un cambio de
 	// ajustes aplica en menos de un minuto sin canales ni reinicios (mismo
@@ -87,6 +94,57 @@ func BackupDue(cfg BackupConfig, lastRun time.Time, now time.Time) bool {
 	return now.Sub(lastRun) >= time.Duration(cfg.FrequencyH)*time.Hour
 }
 
+// errBackupPassphraseUnreadable: a passphrase is stored but this server
+// cannot open it. Backups then fail rather than fall back to plaintext.
+var errBackupPassphraseUnreadable = errors.New("the backup passphrase is stored but cannot be decrypted (secrets.key lost or replaced): set it again")
+
+// backupPassphrase returns the passphrase backups are encrypted with, "" for
+// none. A stored passphrase that cannot be opened is an error, never "".
+func (s *server) backupPassphrase() (string, error) {
+	stored := kvGet(s.db.DB, kvBackupPassphrase)
+	if stored == "" {
+		return "", nil
+	}
+	if s.secrets == nil {
+		return "", errBackupPassphraseUnreadable
+	}
+	pass, err := s.secrets.Unseal(kvBackupPassphrase, stored)
+	if err != nil || pass == "" {
+		return "", errBackupPassphraseUnreadable
+	}
+	return pass, nil
+}
+
+// backupView is the settings answer: the schedule plus whether backups are
+// encrypted. The passphrase itself never leaves the server.
+type backupView struct {
+	BackupConfig
+	Encrypted            bool `json:"encrypted"`
+	PassphraseUnreadable bool `json:"passphrase_unreadable,omitempty"`
+	SecretsUnavailable   bool `json:"secrets_unavailable,omitempty"`
+}
+
+func (s *server) backupView() backupView {
+	v := backupView{BackupConfig: getBackupConfig(s.db), SecretsUnavailable: s.secrets == nil}
+	if kvGet(s.db.DB, kvBackupPassphrase) != "" {
+		if _, err := s.backupPassphrase(); err != nil {
+			v.PassphraseUnreadable = true
+		} else {
+			v.Encrypted = true
+		}
+	}
+	return v
+}
+
+// backupArchiveName is the archive's file name for ts, encrypted or not.
+func backupArchiveName(ts string, encrypted bool) string {
+	name := "netpulse-" + ts + ".tar.gz"
+	if encrypted {
+		name += backupcrypt.Ext
+	}
+	return name
+}
+
 // backupLastRun lee el último run persistido (RFC3339 UTC; zero si nunca).
 func (s *server) backupLastRun() time.Time {
 	v := kvGet(s.db.DB, kvBackupLastRun)
@@ -107,6 +165,10 @@ func (s *server) runBackup() (string, error) {
 	defer s.backupMu.Unlock()
 
 	cfg := getBackupConfig(s.db)
+	pass, err := s.backupPassphrase()
+	if err != nil {
+		return "", err
+	}
 	backupDir := filepath.Join(filepath.Dir(s.db.Path), "backups")
 	if err := ensureBackupDir(backupDir); err != nil {
 		return "", err
@@ -118,8 +180,8 @@ func (s *server) runBackup() (string, error) {
 	// routers (la clave vive en .ssh) ni sirve TLS sin volver a generarlo, así
 	// que el archivo lleva el conjunto: netpulse.db, .ssh y tls. Va en tar.gz
 	// para que sea un único fichero, con la purga tratándolo como uno solo.
-	dst := filepath.Join(backupDir, "netpulse-"+ts+".tar.gz")
-	if err := writeBackupArchive(s.db.DB, filepath.Dir(s.db.Path), s.db.Path, dst); err != nil {
+	dst := filepath.Join(backupDir, backupArchiveName(ts, pass != ""))
+	if err := writeBackupArchive(s.db.DB, filepath.Dir(s.db.Path), s.db.Path, dst, pass); err != nil {
 		return "", err
 	}
 
@@ -171,7 +233,7 @@ func validBackupTime(v string) bool {
 
 func (s *server) registerBackupRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/settings/backup", auth.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, getBackupConfig(s.db))
+		writeJSON(w, http.StatusOK, s.backupView())
 	})))
 
 	mux.Handle("PUT /api/settings/backup", auth.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +242,9 @@ func (s *server) registerBackupRoutes(mux *http.ServeMux) {
 			FrequencyH    *int    `json:"frequency_h"`
 			RetentionDays *int    `json:"retention_days"`
 			Time          *string `json:"time"`
+			// Passphrase (fork): set or replace the backup passphrase; ""
+			// removes it, after which backups are written unencrypted.
+			Passphrase *string `json:"passphrase"`
 		}
 		if st := readJSONBody(w, r, &body); st != 0 {
 			writeBodyError(w, st, "invalid_body", "")
@@ -233,11 +298,44 @@ func (s *server) registerBackupRoutes(mux *http.ServeMux) {
 			}
 		}
 
-		writeJSON(w, http.StatusOK, getBackupConfig(s.db))
+		if body.Passphrase != nil {
+			if *body.Passphrase == "" {
+				if _, err := s.db.Exec("DELETE FROM kv WHERE key = ?", kvBackupPassphrase); err != nil {
+					writeError(w, http.StatusInternalServerError, "kv_error")
+					return
+				}
+			} else {
+				if len(*body.Passphrase) < backupcrypt.MinPassphraseLen {
+					writeError(w, http.StatusBadRequest, "passphrase_too_short",
+						fmt.Sprintf("the backup passphrase needs at least %d characters", backupcrypt.MinPassphraseLen))
+					return
+				}
+				if s.secrets == nil {
+					writeError(w, http.StatusServiceUnavailable, "secrets_unavailable", "secret storage is not available on this server")
+					return
+				}
+				sealed, err := s.secrets.Seal(kvBackupPassphrase, *body.Passphrase)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "seal_error")
+					return
+				}
+				upsert := "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+				if _, err := s.db.Exec(upsert, kvBackupPassphrase, sealed); err != nil {
+					writeError(w, http.StatusInternalServerError, "kv_error")
+					return
+				}
+			}
+		}
+
+		writeJSON(w, http.StatusOK, s.backupView())
 	})))
 
 	mux.Handle("POST /api/backup/run", auth.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dst, err := s.runBackup()
+		if errors.Is(err, errBackupPassphraseUnreadable) {
+			writeError(w, http.StatusConflict, "passphrase_unreadable", err.Error())
+			return
+		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "backup_error")
 			return
@@ -249,30 +347,48 @@ func (s *server) registerBackupRoutes(mux *http.ServeMux) {
 		})
 	})))
 
-	// GET /api/backup/download (admin) — descarga la BD COMPLETA, incluidos
-	// los secrets del kv en claro (session_secret, adguard_pass, tokens de
-	// agente/pairing) y webhook_events. Es un backup fiel para restaurar en
-	// otro host: NO se redacta nada (una redacción rompería la restauración).
-	// El riesgo queda acotado a (issue #218): RequireAdmin; el admin ya puede
-	// leer la DB en disco (el mismo acceso); aviso explícito en el header
-	// X-Netpulse-Backup-Contains-Credentials; y una línea de auditoría en el
-	// log on-box con el admin que descargó.
+	// GET /api/backup/download (admin) — the same complete archive as the
+	// scheduled backup (database, .ssh, tls and secrets.key), encrypted with
+	// the backup passphrase when one is set. It contains every kv secret
+	// (session_secret, adguard_pass, agent and pairing tokens...) and, in
+	// the clear, the SSH and TLS private keys: nothing is redacted, since a
+	// redaction would break a restore. Bounded as #218 set it: RequireAdmin,
+	// the X-Netpulse-Backup-Contains-Credentials header, and an audit line.
+	//
+	// FORK: upstream served a copy of the live database file alone. With
+	// every install on WAL (#1700) that copy can miss what is still in the
+	// WAL, and it left out the keys the scheduled archive carries (#1864).
 	mux.Handle("GET /api/backup/download", auth.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pass, err := s.backupPassphrase()
+		if err != nil {
+			writeError(w, http.StatusConflict, "passphrase_unreadable", err.Error())
+			return
+		}
 		backupDir := filepath.Join(filepath.Dir(s.db.Path), "backups")
-		_ = ensureBackupDir(backupDir)
-		tmpFile := filepath.Join(backupDir, "export-temp.db")
-		if err := copyFile(s.db.Path, tmpFile); err != nil {
+		if err := ensureBackupDir(backupDir); err != nil {
+			writeError(w, http.StatusInternalServerError, "backup_error")
+			return
+		}
+		name := backupArchiveName(time.Now().UTC().Format("20060102-150405"), pass != "")
+		// A name the purge does not match, so a half-written export is
+		// never mistaken for a backup.
+		tmpFile := filepath.Join(backupDir, "export-"+name+".partial")
+		if err := writeBackupArchive(s.db.DB, filepath.Dir(s.db.Path), s.db.Path, tmpFile, pass); err != nil {
 			writeError(w, http.StatusInternalServerError, "backup_error")
 			return
 		}
 		defer os.Remove(tmpFile)
 
 		if u := auth.UserFromContext(r.Context()); u != nil {
-			log.Printf("[netpulse] backup: full DB download (includes kv secrets) by admin %s", u.Username)
+			log.Printf("[netpulse] backup: full archive download (encrypted=%t) by admin %s", pass != "", u.Username)
 		}
-		w.Header().Set("X-Netpulse-Backup-Contains-Credentials", "true")
+		contains := "true"
+		if pass != "" {
+			contains = "encrypted"
+		}
+		w.Header().Set("X-Netpulse-Backup-Contains-Credentials", contains)
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="netpulse-%s.db"`, time.Now().UTC().Format("20060102-150405")))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
 		http.ServeFile(w, r, tmpFile)
 	})))
 }
@@ -302,7 +418,10 @@ func copyFile(src, dst string) error {
 // otro host pueda entrar por SSH en los routers y servir TLS sin regenerar
 // nada. Un directorio que no exista (instalación sin clave todavía) se omite
 // sin fallar: el backup sigue siendo válido.
-func writeBackupArchive(d *sql.DB, dataDir, dbPath, dst string) error {
+//
+// With pass set, the gzip stream goes through backupcrypt, so the file on
+// disk is encrypted from its first byte (fork).
+func writeBackupArchive(d *sql.DB, dataDir, dbPath, dst, pass string) error {
 	tmp := dst + ".tmp"
 	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, backupFileMode)
 	if err != nil {
@@ -331,7 +450,15 @@ func writeBackupArchive(d *sql.DB, dataDir, dbPath, dst string) error {
 	}
 	defer os.Remove(snapshot)
 
-	zw := gzip.NewWriter(out)
+	var sink io.Writer = out
+	var enc io.WriteCloser
+	if pass != "" {
+		if enc, err = backupcrypt.NewWriter(out, pass); err != nil {
+			return fail(err)
+		}
+		sink = enc
+	}
+	zw := gzip.NewWriter(sink)
 	tw := tar.NewWriter(zw)
 
 	if err := addTarFile(tw, snapshot, filepath.Base(dbPath)); err != nil {
@@ -346,12 +473,25 @@ func writeBackupArchive(d *sql.DB, dataDir, dbPath, dst string) error {
 			return fail(err)
 		}
 	}
+	// FORK: the key kvseal seals credentials with (Matrix, the backup
+	// passphrase). Restored without it, the database keeps those values but
+	// nothing can open them.
+	if p := filepath.Join(dataDir, kvseal.KeyFile); fileExists(p) {
+		if err := addTarFile(tw, p, kvseal.KeyFile); err != nil {
+			return fail(err)
+		}
+	}
 
 	if err := tw.Close(); err != nil {
 		return fail(err)
 	}
 	if err := zw.Close(); err != nil {
 		return fail(err)
+	}
+	if enc != nil {
+		if err := enc.Close(); err != nil {
+			return fail(err)
+		}
 	}
 	if err := out.Close(); err != nil {
 		os.Remove(tmp)
@@ -435,6 +575,7 @@ func addTarTree(tw *tar.Writer, src, root string) error {
 // para que la retención siga limpiando lo que dejaron versiones viejas.
 func isBackupFile(name string) bool {
 	return strings.HasSuffix(name, ".tar.gz") ||
+		strings.HasSuffix(name, ".tar.gz"+backupcrypt.Ext) ||
 		strings.HasSuffix(name, ".db.gz") ||
 		strings.HasSuffix(name, ".db")
 }
@@ -481,4 +622,9 @@ func fileSizeHuman(path string) string {
 	default:
 		return fmt.Sprintf("%d B", size)
 	}
+}
+
+func fileExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular()
 }
