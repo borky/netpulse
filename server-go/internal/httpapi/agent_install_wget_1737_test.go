@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -24,9 +25,9 @@ func TestInstallLineHasAWgetBranch(t *testing.T) {
 	}
 }
 
-// Con HTTPS y CA propia, wget de BusyBox no conoce --ca-certificate: la línea
-// intenta con la CA y reintenta sin verificar el certificado, porque el pin
-// (--server-fp) y el token de un solo uso siguen protegiendo el flujo.
+// With HTTPS and a private CA the wget branch verifies against that root
+// and never retries unverified (FORK): the downloaded script runs as root
+// and is what applies the pin, so an unverified one could skip it.
 func TestInstallLineWgetBranchKeepsTheRootWhenPossible(t *testing.T) {
 	ts, mgr := makeHTTPSTestServer(t)
 	enableHTTPS(t, mgr)
@@ -34,11 +35,17 @@ func TestInstallLineWgetBranchKeepsTheRootWhenPossible(t *testing.T) {
 
 	for _, want := range []string{
 		`wget -q --ca-certificate="$NPCA" -O /tmp/netpulse-install-agent.sh`,
-		"wget -q --no-check-certificate -O /tmp/netpulse-install-agent.sh",
+		"this wget cannot verify the server certificate",
 		"--server-fp=" + mgr.Fingerprint(),
 	} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("install line lacks %q:\n%s", want, line)
 		}
+	}
+	if strings.Contains(line, "--no-check-certificate") {
+		t.Fatalf("install line downloads the installer unverified:\n%s", line)
+	}
+	if out, err := exec.Command("sh", "-n", "-c", line).CombinedOutput(); err != nil {
+		t.Fatalf("install line is not valid sh: %v\n%s", err, out)
 	}
 }
