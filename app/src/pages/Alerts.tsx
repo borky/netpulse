@@ -800,10 +800,13 @@ export default function Alerts() {
           if (ev.severity !== SEV_MATCH[sev]) return false
         }
         if (cats.size > 0 && !cats.has(ev.category)) return false
-        if (onlyUnread && isRead(ev)) return false
+        // Opening an alert marks it read; under "only unread" that hid the
+        // row at the click that opened it. The open one stays until it is
+        // collapsed or another one is opened.
+        if (onlyUnread && isRead(ev) && ev.id !== expandedId) return false
         return true
       }),
-    [alertFeed, sev, cats, onlyUnread, hideRecovery],
+    [alertFeed, sev, cats, onlyUnread, hideRecovery, expandedId],
   )
 
   const groups = useMemo(
