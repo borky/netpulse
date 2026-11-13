@@ -2375,8 +2375,9 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 		}
 		hostname = cleanMdnsText(hostname)
 		parts := strings.SplitN(key, ".", 3)
+		svcType := ""
 		if len(parts) >= 2 && strings.HasPrefix(parts[1], "_") {
-			svcType := parts[1]
+			svcType = parts[1]
 			if len(parts) >= 3 {
 				svcType = parts[1] + "." + strings.SplitN(parts[2], ".", 2)[0]
 			}
@@ -2388,8 +2389,10 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 		if json.Unmarshal(val, &entry) == nil {
 			if ip := firstIPv4(entry.IPv4); ip != "" {
 				dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], hostname)
-				for _, svc := range dd.Services[hostname] {
-					dd.ServicesByIP[ip] = appendUnique(dd.ServicesByIP[ip], svc)
+				// This record's service only: the instance name may be one
+				// several devices share.
+				if svcType != "" {
+					dd.ServicesByIP[ip] = appendUnique(dd.ServicesByIP[ip], svcType)
 				}
 			}
 		}
