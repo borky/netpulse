@@ -924,6 +924,11 @@ function DeviceDetail({
           <span className="text-text-muted">—</span>
         )}
       </DetailItem>
+      {device.portMacs && device.portMacs.length > 0 && (
+        <DetailItem label={t('devices.detail.portMacs')} mono>
+          <span className="break-all">{device.portMacs.join(', ')}</span>
+        </DetailItem>
+      )}
       <DetailItem label={t('devices.detail.manufacturer')}>{manufacturerLabel(device.manufacturer)}</DetailItem>
       <DetailItem label={t('devices.detail.lastSeen')}>{fmtSeenAgo(device.lastSeenMs)}</DetailItem>
       <DetailItem label="Hostname" mono>
@@ -1722,7 +1727,7 @@ export default function Devices() {
       if (q) {
         // #1298: las MACs enlazadas (#1151) también buscables - la MAC de
         // otra banda/red del mismo cliente encuentra al canónico.
-        const hay = `${d.name} ${d.ip} ${d.mac} ${d.manufacturer} ${d.hostname} ${(d.aliasMacs ?? []).join(' ')}`.toLowerCase()
+        const hay = `${d.name} ${d.ip} ${d.mac} ${d.manufacturer} ${d.hostname} ${(d.aliasMacs ?? []).join(' ')} ${(d.portMacs ?? []).join(' ')}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
