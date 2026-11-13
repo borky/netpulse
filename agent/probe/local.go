@@ -787,6 +787,22 @@ func (p *Prober) probeDHCP(ctx context.Context) *DHCPData {
 		}
 		dd = &DHCPData{Leases: ParseDhcpLeasesFile(out)}
 	}
+	// What each client asked for in its DHCP request, from the packaged
+	// hotplug script. The lease carries the vendor class only on firmwares
+	// whose ubus reports it; the hook sees it on every request.
+	if out := p.runBest(ctx, CmdDhcpFingerprints, 0); strings.TrimSpace(out) != "" {
+		fps := ParseDhcpFingerprints(out)
+		for i := range dd.Leases {
+			fp, ok := fps[dd.Leases[i].MAC]
+			if !ok {
+				continue
+			}
+			dd.Leases[i].ParamReqList = fp.ParamReqList
+			if dd.Leases[i].VendorClass == "" {
+				dd.Leases[i].VendorClass = fp.VendorClass
+			}
+		}
+	}
 	if out := p.runBest(ctx, CmdGlClients, 0); out != "" {
 		if gl, err := ParseGlClients([]byte(out)); err == nil {
 			dd.GlClients = gl

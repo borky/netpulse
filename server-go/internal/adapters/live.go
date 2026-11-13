@@ -25,6 +25,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/config"
 	"github.com/gnacho/netpulse/server-go/internal/db"
 	"github.com/gnacho/netpulse/server-go/internal/deviceevents"
+	"github.com/gnacho/netpulse/server-go/internal/dhcpfp"
 	"github.com/gnacho/netpulse/server-go/internal/oui"
 	"github.com/gnacho/netpulse/server-go/internal/portseries"
 	"github.com/gnacho/netpulse/server-go/internal/roamevents"
@@ -3875,6 +3876,22 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 		// yielded "desconocido" but mDNS services are available, try to classify.
 		if d.Type == "desconocido" && len(d.MdnsServices) > 0 {
 			d.Type = guessFromMdns(d.MdnsServices)
+		}
+		// DHCP option 55: the OS behind a lease with no hostname and a
+		// private MAC, the one case the rules above cannot see. It fills
+		// only what is still missing: a hostname rule is more specific
+		// (it tells an iPad from an iPhone), and the OUI names the maker
+		// of the hardware, which the OS vendor is not.
+		if hasLease && lease.ParamReqList != "" {
+			if fp, ok := dhcpfp.Lookup(lease.ParamReqList); ok {
+				d.DhcpFingerprint = fp.OS
+				if d.Type == "desconocido" {
+					d.Type = fp.Type
+				}
+				if d.Manufacturer == "" {
+					d.Manufacturer = fp.Manufacturer
+				}
+			}
 		}
 		// issue #797: el tipo manual manda sobre la clasificación (reglas,
 		// huella DHCP y refinación mDNS).

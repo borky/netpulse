@@ -58,6 +58,11 @@ const (
 	// SUPERSET de dhcp.leases: incluye equipos con IP estática o sin lease
 	// DHCP que el dnsmasq del Flint2 no lista (issue #5 bug 1).
 	CmdGlClients = "ubus call gl-clients list 2>/dev/null || true"
+	// CmdDhcpFingerprints: the file the packaged hotplug script keeps (see
+	// deploy/openwrt/netpulse-agent/files/netpulse-agent.dhcp-hotplug), one
+	// "mac<TAB>option 55<TAB>option 60<TAB>time" line per client. Empty on a
+	// router without the hook or before its first lease.
+	CmdDhcpFingerprints = "cat /tmp/netpulse-agent/dhcp-fingerprints 2>/dev/null || true"
 	// CmdIwinfoAssoc: "<mac> <sig> <freq>" por cliente wifi asociado.
 	CmdIwinfoAssoc = `for i in $(iwinfo 2>/dev/null | awk '/^[a-z]/ {print $1}'); do ` +
 		`freq=$(iwinfo "$i" info 2>/dev/null | sed -n 's/.*Channel: [0-9]* (\([0-9.]*\) GHz).*/\1/p' | head -1); ` +
@@ -351,12 +356,51 @@ type DhcpReservation struct {
 // DhcpLease es {mac, ip, hostname} (mac en mayúsculas) + señales de huella
 // DHCP (vendor class y client-id) y expiración del lease cuando se dispone.
 type DhcpLease struct {
-	MAC            string `json:"mac"`
-	IP             string `json:"ip"`
-	Hostname       string `json:"hostname"`
-	VendorClass    string `json:"vendorClass,omitempty"`
-	ClientID       string `json:"clientId,omitempty"`
+	MAC         string `json:"mac"`
+	IP          string `json:"ip"`
+	Hostname    string `json:"hostname"`
+	VendorClass string `json:"vendorClass,omitempty"`
+	ClientID    string `json:"clientId,omitempty"`
+	// ParamReqList is DHCP option 55, the options the client asked for, as
+	// "1,121,3,6,...". Each operating system asks for its own set, so it
+	// identifies the OS of a client that sends no hostname and uses a
+	// private MAC. Only known where the packaged hotplug script runs.
+	ParamReqList   string `json:"paramReqList,omitempty"`
 	LeaseExpiresAt *int64 `json:"leaseExpiresAt,omitempty"` // Unix segundos; nil si no se conoce
+}
+
+// DhcpFingerprint is one line of the hotplug script's file: what a client
+// asked for in its last DHCP request.
+type DhcpFingerprint struct {
+	ParamReqList string
+	VendorClass  string
+}
+
+// ParseDhcpFingerprints parses the "mac<TAB>option 55<TAB>option 60<TAB>time"
+// lines the hotplug script writes, keyed by upper-case MAC. Lines that do not
+// look like that are skipped: the file is written by a shell script and a
+// half-written line must not take the rest down with it.
+func ParseDhcpFingerprints(out string) map[string]DhcpFingerprint {
+	fps := map[string]DhcpFingerprint{}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) < 2 {
+			continue
+		}
+		mac := strings.ToUpper(strings.TrimSpace(f[0]))
+		if len(mac) != 17 || strings.Count(mac, ":") != 5 {
+			continue
+		}
+		fp := DhcpFingerprint{ParamReqList: strings.TrimSpace(f[1])}
+		if len(f) > 2 {
+			fp.VendorClass = strings.TrimSpace(f[2])
+		}
+		if fp.ParamReqList == "" && fp.VendorClass == "" {
+			continue
+		}
+		fps[mac] = fp
+	}
+	return fps
 }
 
 // WirelessClient es {signalDbm, band} por MAC + contadores de tráfico de la
