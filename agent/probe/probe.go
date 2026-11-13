@@ -2276,13 +2276,60 @@ func ParseMdnsHosts(raw []byte) map[string]string {
 	if json.Unmarshal(raw, &hosts) != nil {
 		return out
 	}
+	// One device often has several host records (an Android TV announces
+	// "Android.local" and a UUID): keep the best name for each address,
+	// the same one on every poll, not whichever the map yields first.
 	for name, h := range hosts {
 		if h.IPv4 == "" {
 			continue
 		}
-		out[h.IPv4] = strings.TrimSuffix(name, ".local")
+		out[h.IPv4] = BetterMdnsName(out[h.IPv4], strings.TrimSuffix(name, ".local"))
 	}
 	return out
+}
+
+// MdnsNameIsWeak reports whether an mDNS host name says nothing about the
+// device: a UUID or long hex id, or a generic name every device of a kind
+// announces. Such a name is used only when nothing better names the device.
+func MdnsNameIsWeak(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case "", "android", "localhost", "linux", "esp32", "esp8266":
+		return true
+	}
+	hex := 0
+	for _, r := range n {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
+			hex++
+		case r == '-':
+		default:
+			return false
+		}
+	}
+	return hex >= 12
+}
+
+// BetterMdnsName picks between two candidate names for one address: a
+// strong name over a weak one, then the lexically smaller, so the choice is
+// stable from poll to poll. Either may be empty.
+func BetterMdnsName(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	if wa, wb := MdnsNameIsWeak(a), MdnsNameIsWeak(b); wa != wb {
+		if wa {
+			return b
+		}
+		return a
+	}
+	if b < a {
+		return b
+	}
+	return a
 }
 
 // ParseMdnsBrowse (#338): parsea la salida de `ubus call umdns browse`.
@@ -2296,28 +2343,27 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 	if len(raw) == 0 {
 		return nil
 	}
-	// umdns browse devuelve un objeto JSON con claves "fqdn" y valores que
-	// contienen "port", "txt", "ipv4", etc. Parseamos como map genérico.
 	var browse map[string]json.RawMessage
-	if json.Unmarshal(raw, &browse) != nil {
+	if json.Unmarshal(raw, &browse) != nil || len(browse) == 0 {
 		return nil
 	}
-	if len(browse) == 0 {
-		return nil
-	}
-
 	dd := &DiscoveryData{
-		Services: map[string][]string{},
-		HostByIP: map[string]string{},
+		Services:   map[string][]string{},
+		HostByIP:   map[string]string{},
+		DeviceByIP: map[string]MdnsDevice{},
 	}
-	for fqdn, val := range browse {
-		// Extraer hostname: primera parte antes del "."
-		hostname := fqdn
-		if idx := strings.Index(fqdn, "."); idx > 0 {
-			hostname = fqdn[:idx]
+	for key, val := range browse {
+		if strings.HasPrefix(key, "_") {
+			// umdns's own shape: service type -> instance -> record.
+			parseMdnsService(dd, key, val)
+			continue
 		}
-		// Extraer tipo de servicio: segundo segmento "_svc._tcp" o "_svc._udp"
-		parts := strings.SplitN(fqdn, ".", 3)
+		// Flat "instance._svc._tcp.local" -> record, kept for the older shape.
+		hostname := key
+		if idx := strings.Index(key, "."); idx > 0 {
+			hostname = key[:idx]
+		}
+		parts := strings.SplitN(key, ".", 3)
 		if len(parts) >= 2 && strings.HasPrefix(parts[1], "_") {
 			svcType := parts[1]
 			if len(parts) >= 3 {
@@ -2325,18 +2371,107 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 			}
 			dd.Services[hostname] = appendUnique(dd.Services[hostname], svcType)
 		}
-		// Extraer IP si disponible
 		var entry struct {
-			IPv4 string `json:"ipv4"`
+			IPv4 json.RawMessage `json:"ipv4"`
 		}
-		if json.Unmarshal(val, &entry) == nil && entry.IPv4 != "" {
-			dd.HostByIP[entry.IPv4] = hostname
+		if json.Unmarshal(val, &entry) == nil {
+			if ip := firstIPv4(entry.IPv4); ip != "" {
+				dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], hostname)
+			}
 		}
 	}
-	if len(dd.Services) == 0 && len(dd.HostByIP) == 0 {
+	if len(dd.DeviceByIP) == 0 {
+		dd.DeviceByIP = nil
+	}
+	if len(dd.Services) == 0 && len(dd.HostByIP) == 0 && dd.DeviceByIP == nil {
 		return nil
 	}
 	return dd
+}
+
+// parseMdnsService reads one service type of `ubus call umdns browse`:
+// {"<instance>": {"host": "x.local", "ipv4": "a.b.c.d" or [...], "txt": [...]}}.
+func parseMdnsService(dd *DiscoveryData, svcType string, raw json.RawMessage) {
+	var instances map[string]struct {
+		Host string          `json:"host"`
+		IPv4 json.RawMessage `json:"ipv4"`
+		TXT  []string        `json:"txt"`
+	}
+	if json.Unmarshal(raw, &instances) != nil {
+		return
+	}
+	for instance, rec := range instances {
+		host := strings.TrimSuffix(rec.Host, ".local")
+		if host == "" {
+			host = instance
+		}
+		dd.Services[host] = appendUnique(dd.Services[host], svcType)
+		ip := firstIPv4(rec.IPv4)
+		if ip == "" {
+			continue
+		}
+		if rec.Host != "" {
+			dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], host)
+		}
+		txt := map[string]string{}
+		for _, kv := range rec.TXT {
+			if k, v, ok := strings.Cut(kv, "="); ok {
+				txt[strings.ToLower(k)] = v
+			}
+		}
+		info := dd.DeviceByIP[ip]
+		switch svcType {
+		case "_googlecast._tcp":
+			// fn: the name the owner gave the Cast device; md: its model.
+			info.Name = firstNonEmpty(info.Name, cleanMdnsText(txt["fn"]))
+			info.Model = firstNonEmpty(info.Model, cleanMdnsText(txt["md"]))
+		case "_airplay._tcp":
+			// The instance name is the AirPlay name the owner set.
+			info.Name = firstNonEmpty(info.Name, cleanMdnsText(instance))
+			info.Model = firstNonEmpty(info.Model, cleanMdnsText(txt["model"]))
+		case "_raop._tcp":
+			info.Model = firstNonEmpty(info.Model, cleanMdnsText(txt["am"]))
+		}
+		if info != (MdnsDevice{}) {
+			dd.DeviceByIP[ip] = info
+		}
+	}
+}
+
+// firstIPv4 reads umdns's ipv4 field, a string or, with "array": true, a list.
+func firstIPv4(raw json.RawMessage) string {
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return one
+	}
+	var many []string
+	if json.Unmarshal(raw, &many) == nil && len(many) > 0 {
+		return many[0]
+	}
+	return ""
+}
+
+// cleanMdnsText makes a TXT value fit for a name: no control characters,
+// trimmed, at most 64 runes. The values come from devices on the LAN.
+func cleanMdnsText(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > 64 {
+		s = string(r[:64])
+	}
+	return s
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 func appendUnique(slice []string, s string) []string {

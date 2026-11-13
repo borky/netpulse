@@ -39,6 +39,7 @@ import { networkHasBand6 } from '@/components/topology/model'
 import type { ClientDevice, FilterGroup } from '@/pages/devices-data'
 import { buildClientDevices, GROUP_ORDER } from '@/pages/devices-data'
 import type { DeviceType } from '@/data/mock'
+import { isNameless } from '@/data/types'
 
 
 // ---------------------------------------------------------------------------
@@ -1621,7 +1622,7 @@ export default function Devices() {
   // candidatos a la tarjeta de alta. Un dispositivo conocido que reconecta
   // resuelve su lease en 1-2 ticks y desaparece de aquí solo.
   const namelessDevices = useMemo(
-    () => allDevices.filter((d) => d.name === d.mac && d.online),
+    () => allDevices.filter((d) => isNameless(d) && d.online),
     [allDevices],
   )
   const [view, setView] = useState<'list' | 'grid'>(() => loadDevicesPrefs().view)

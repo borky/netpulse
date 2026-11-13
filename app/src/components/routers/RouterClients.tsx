@@ -13,6 +13,7 @@ import { buildClientDevices } from '@/pages/devices-data'
 import type { ClientDevice } from '@/pages/devices-data'
 import { cn, fetchJson } from '@/lib/utils'
 import { useParentName } from '@/lib/parent'
+import { isNameless } from '@/data/types'
 
 const VISIBLE_COUNT = 6
 
@@ -67,8 +68,8 @@ export function RouterClients({ router }: { router: Router }) {
       })
     // #827: los sin identificar (nombre = MAC) son los accionables: se
     // muestran SIEMPRE, fijos en los primeros puestos de la sección.
-    const unknown = list.filter((d) => d.name === d.mac)
-    const known = list.filter((d) => d.name !== d.mac)
+    const unknown = list.filter((d) => isNameless(d))
+    const known = list.filter((d) => !isNameless(d))
     const dir = sort.dir
     known.sort((a, b) => {
       switch (sort.key) {

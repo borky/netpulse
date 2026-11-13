@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/sheet'
 import { cn, fetchJson } from '@/lib/utils'
 import type { ClientDevice } from '@/pages/devices-data'
+import { isNameless } from '@/data/types'
 
 export interface OnboardingIntakeProps {
   open: boolean
@@ -38,7 +39,7 @@ export function OnboardingIntake({ open, device, isDemo, onClose, onSaved }: Onb
   const [planBusy, setPlanBusy] = useState(false)
 
   useEffect(() => {
-    setName(device && device.name !== device.mac ? device.name : '')
+    setName(device && !isNameless(device) ? device.name : '')
     setIcon(device?.iconOverride ?? '')
     setReserve(false)
     setIp(device?.ip ?? '')
@@ -50,7 +51,7 @@ export function OnboardingIntake({ open, device, isDemo, onClose, onSaved }: Onb
   if (!device) return null
 
   const PreviewIcon = ((icon ? ICON_OVERRIDES[icon] : null) ?? ICON_OVERRIDES['help-circle']) as LucideIcon
-  const nameless = device.name === device.mac
+  const nameless = isNameless(device)
 
   const applyReservation = async (): Promise<boolean> => {
     const res = await fetchJson(`/api/devices/${encodeURIComponent(device.mac)}/reservation`, {
