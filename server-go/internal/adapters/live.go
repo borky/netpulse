@@ -2681,7 +2681,9 @@ func (l *Live) trackUnknownDevices(devices []Device, dists []DistributionNode) {
 		}
 		// issue #234: con hostname (lease resuelto) el dispositivo es
 		// conocido; se resetea su gracia y nunca alerta.
-		if d.Name != d.MAC {
+		// A label inferred from the DHCP fingerprint is not a name: the
+		// device is still unknown.
+		if d.Name != d.MAC && !d.NameInferred {
 			delete(l.unknownGrace, d.MAC)
 			delete(l.unverifiedSince, d.MAC)
 			continue
@@ -3480,12 +3482,25 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 	mdnsHostByIP := map[string]string{}
 	randomMACs := map[string]bool{}
 	mdnsSvcByHost := map[string][]string{}
+	mdnsDevByIP := map[string]probe.MdnsDevice{}
 	for _, p := range polled {
 		if p.discovery == nil {
 			continue
 		}
 		for ip, host := range p.discovery.HostByIP {
-			mdnsHostByIP[ip] = host
+			// Two routers may name one address: keep the better name, the
+			// same on every poll whatever order the routers come in.
+			mdnsHostByIP[ip] = probe.BetterMdnsName(mdnsHostByIP[ip], host)
+		}
+		for ip, dev := range p.discovery.DeviceByIP {
+			cur := mdnsDevByIP[ip]
+			if cur.Name == "" {
+				cur.Name = dev.Name
+			}
+			if cur.Model == "" {
+				cur.Model = dev.Model
+			}
+			mdnsDevByIP[ip] = cur
 		}
 		for _, mac := range p.discovery.RandomMACs {
 			randomMACs[mac] = true
@@ -4013,28 +4028,45 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 			vendorClass = lease.VendorClass
 			clientID = lease.ClientID
 		}
-		// Tipo estimado con reglas deterministas (hostname, huella DHCP y
-		// capacidades LLDP). Con nombre-MAC (sin hostname) queda "desconocido".
-		d.Type = GuessDeviceType(d.Name, d.Manufacturer, vendorClass, clientID, lldpCapsByMac[mac])
-		// mDNS enrichment (#338): resolve hostname from IP → lookup services.
+		// mDNS (#338): the services and self-description of the address.
+		var mdnsDev probe.MdnsDevice
+		mdnsHost := ""
 		if d.IP != "" {
+			mdnsDev = mdnsDevByIP[d.IP]
 			if host, ok := mdnsHostByIP[d.IP]; ok {
+				mdnsHost = host
 				if svcs, ok := mdnsSvcByHost[host]; ok {
 					d.MdnsServices = svcs
 				}
-				// If the device has no name (just MAC), use the mDNS hostname.
-				if d.Name == mac {
-					d.Name = host
-				}
 			}
 		}
-		// Static-IP hosts never take a lease: fall back to their PTR record.
+		// A device the lease, the reservation, the allowlist and the manual
+		// overrides above left unnamed takes, best first: the name its owner
+		// gave it (a Cast or AirPlay name), its mDNS host name, its PTR
+		// record (static-IP hosts never take a lease), and only then an mDNS
+		// host name that says nothing - a UUID, a bare "Android".
+		if d.Name == mac && mdnsDev.Name != "" {
+			d.Name = mdnsDev.Name
+		}
+		if d.Name == mac && mdnsHost != "" && !probe.MdnsNameIsWeak(mdnsHost) {
+			d.Name = mdnsHost
+		}
 		if d.Name == mac && d.IP != "" {
 			if host := l.rdns.Name(d.IP); host != "" {
 				d.Name = host
-				// The type above was guessed from the MAC, which says
-				// nothing. Guess it again now that there is a hostname.
-				d.Type = GuessDeviceType(d.Name, d.Manufacturer, vendorClass, clientID, lldpCapsByMac[mac])
+			}
+		}
+		if d.Name == mac && mdnsHost != "" {
+			d.Name = mdnsHost
+		}
+		// Tipo estimado con reglas deterministas (hostname, huella DHCP y
+		// capacidades LLDP), once the name is final. The model a device
+		// announces outranks the DHCP vendor class: an Android TV sends
+		// Android's vendor class, and only its model says it is a TV.
+		d.Type = GuessDeviceType(d.Name, d.Manufacturer, vendorClass, clientID, lldpCapsByMac[mac])
+		if typeFromName(d.Name) == "" {
+			if t := typeFromName(mdnsDev.Model); t != "" {
+				d.Type = t
 			}
 		}
 		// #1818: el bit localmente administrado se calcula aquí. La lista del
@@ -4064,6 +4096,14 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 					d.Manufacturer = fp.Manufacturer
 				}
 			}
+		}
+		// Still unnamed: label it by its OS and the tail of its MAC, so a
+		// list of private-MAC phones is not a list of addresses. The label
+		// is a guess, not an identity: NameInferred keeps the device
+		// "unknown" for the alert and the counters that key on a name.
+		if d.Name == mac && d.DhcpFingerprint != "" {
+			d.Name = d.DhcpFingerprint + "-" + strings.ToUpper(strings.ReplaceAll(mac[len(mac)-5:], ":", ""))
+			d.NameInferred = true
 		}
 		// issue #797: el tipo manual manda sobre la clasificación (reglas,
 		// huella DHCP y refinación mDNS).

@@ -323,4 +323,15 @@ type DiscoveryData struct {
 	// RandomMACs: MACs detected as locally-administered (bit 1 of byte 0 set).
 	// These are typically iOS/Android private WiFi addresses that rotate.
 	RandomMACs []string `json:"randomMacs,omitempty"`
+	// DeviceByIP: what a device says about itself in its service records,
+	// by IPv4: the name its owner gave it (a Cast "fn", an AirPlay instance)
+	// and its model. A better name than any mDNS host name, which is often
+	// a UUID or a bare "Android".
+	DeviceByIP map[string]MdnsDevice `json:"deviceByIp,omitempty"`
+}
+
+// MdnsDevice is a device's self-description from its mDNS TXT records.
+type MdnsDevice struct {
+	Name  string `json:"name,omitempty"`
+	Model string `json:"model,omitempty"`
 }

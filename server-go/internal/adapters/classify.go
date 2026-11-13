@@ -76,12 +76,8 @@ func GuessDeviceType(hostname, manufacturer, dhcpVendorClass, dhcpClientID, lldp
 	caps := strings.ToLower(strings.TrimSpace(lldpCaps))
 	// Hostnames basura frecuentes (MAC como nombre, "unknown-…", "android-…"
 	// genérico de DHCP) solo aportan si casan con una regla clara.
-	for _, r := range typeRules {
-		for _, s := range r.subs {
-			if h != "" && strings.Contains(h, s) {
-				return r.typ
-			}
-		}
+	if t := typeFromName(h); t != "" {
+		return t
 	}
 	// Huella DHCP (option 60 vendor class): específica de SO/plataforma.
 	if v != "" {
@@ -124,6 +120,23 @@ func GuessDeviceType(hostname, manufacturer, dhcpVendorClass, dhcpClientID, lldp
 		return "iot"
 	}
 	return "desconocido"
+}
+
+// typeFromName is the hostname rules alone: the type a name (or a model
+// string) matches, or "" when no rule does.
+func typeFromName(name string) string {
+	h := strings.ToLower(strings.TrimSpace(name))
+	if h == "" {
+		return ""
+	}
+	for _, r := range typeRules {
+		for _, s := range r.subs {
+			if strings.Contains(h, s) {
+				return r.typ
+			}
+		}
+	}
+	return ""
 }
 
 // ValidDeviceTypes es el conjunto cerrado de tipos que GuessDeviceType puede

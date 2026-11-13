@@ -284,6 +284,8 @@ export interface Device {
   manufacturer: string
   /** OS its DHCP request matched ("iOS", "Windows", ...), when the router records it. */
   dhcpFingerprint?: string
+  /** name is a label made from the fingerprint, not a real name: the device still counts as unknown. */
+  nameInferred?: boolean
   ip: string
   mac: string
   routerId: string
@@ -773,4 +775,9 @@ export interface NetworkInfo {
   clientMacs?: string[]
   rxBps?: number
   txBps?: number
+}
+
+/** A device nothing really named: its name is its MAC, or only a label inferred from its DHCP fingerprint. */
+export function isNameless(d: Pick<Device, 'name' | 'mac' | 'nameInferred'>): boolean {
+  return d.name === d.mac || !!d.nameInferred
 }

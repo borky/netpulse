@@ -405,6 +405,10 @@ type Device struct {
 	// (option 55) matched, such as "iOS" or "Windows"; empty when the list is
 	// unknown or the router does not record it (internal/dhcpfp).
 	DhcpFingerprint string `json:"dhcpFingerprint,omitempty"`
+	// NameInferred: Name is a label made from the fingerprint ("iOS-6C3E"),
+	// not a name the device or its owner gave. Such a device still counts
+	// as unknown, for the alert and in the UI.
+	NameInferred bool `json:"nameInferred,omitempty"`
 	// --- tiempos / overrides ---
 	// LeaseRemaining: segundos restantes del lease DHCP (nil si no hay lease).
 	LeaseRemaining *int `json:"leaseRemaining,omitempty"`
