@@ -23,27 +23,28 @@ import (
 // reports no ports for.
 const defaultPortMACSpan = 4
 
-// uniFiPortMACs returns, for each live device that is only a UniFi device's
-// port address, the base MAC of that device. A device qualifies when:
-//
-//   - its MAC is 1..N above the base MAC of a switch or AP the controller
-//     lists, N being that device's port count;
-//   - the controller lists it neither as a device nor as a client;
-//   - it has no IP, no DHCP lease, no name of any kind (a name, an override
-//     or a link always wins), no Wi-Fi band, no DHCP fingerprint, no mDNS
-//     service and no LLDP neighbour of its own.
-func uniFiPortMACs(devices []Device, inv *unifiInventory) map[string]string {
+// uniFiPortOwner returns the base MAC of the UniFi switch or AP whose port
+// address mac is: 1..N above that device's base MAC, N its port count, and
+// listed by the controller neither as a device nor as a client. It says
+// nothing about whether something else knows the address as a host; the
+// callers check that.
+func uniFiPortOwner(mac string, inv *unifiInventory) (string, bool) {
 	if inv == nil || len(inv.devices) == 0 {
-		return nil
+		return "", false
 	}
-	type base struct {
-		mac  string
-		val  uint64
-		span uint64
+	if _, listed := inv.devices[mac]; listed {
+		return "", false
 	}
-	var bases []base
-	for mac, dev := range inv.devices {
-		v, ok := macValue(mac)
+	if _, listed := inv.clients[mac]; listed {
+		return "", false
+	}
+	v, ok := macValue(mac)
+	if !ok {
+		return "", false
+	}
+	owner := ""
+	for base, dev := range inv.devices {
+		b, ok := macValue(base)
 		if !ok {
 			continue
 		}
@@ -51,40 +52,47 @@ func uniFiPortMACs(devices []Device, inv *unifiInventory) map[string]string {
 		if span == 0 {
 			span = defaultPortMACSpan
 		}
-		bases = append(bases, base{mac: mac, val: v, span: span})
+		// The lowest base wins, so the answer never depends on map order.
+		if v > b && v-b <= span && (owner == "" || base < owner) {
+			owner = base
+		}
+	}
+	return owner, owner != ""
+}
+
+// uniFiPortMACs returns, for each live device that is only a UniFi device's
+// port address, the base MAC of that device. Beyond uniFiPortOwner, the
+// device must show no sign of being a host (onlyAPortAddress), and the
+// registry must not remember a name or an IP for it: a host whose lease
+// has just expired has neither right now, and those are restored only
+// after this runs.
+func uniFiPortMACs(devices []Device, inv *unifiInventory, remembered map[string]seenRow) map[string]string {
+	if inv == nil || len(inv.devices) == 0 {
+		return nil
 	}
 	out := map[string]string{}
 	for _, d := range devices {
 		if !onlyAPortAddress(d) {
 			continue
 		}
-		if _, listed := inv.devices[d.MAC]; listed {
+		if r, ok := remembered[d.MAC]; ok && (r.name != "" || r.ip != "") {
 			continue
 		}
-		if _, listed := inv.clients[d.MAC]; listed {
-			continue
-		}
-		v, ok := macValue(d.MAC)
-		if !ok {
-			continue
-		}
-		for _, b := range bases {
-			if v > b.val && v-b.val <= b.span {
-				out[d.MAC] = b.mac
-				break
-			}
+		if owner, ok := uniFiPortOwner(d.MAC, inv); ok {
+			out[d.MAC] = owner
 		}
 	}
 	return out
 }
 
 // onlyAPortAddress: nothing about the device says it is a host. Any one
-// sign - an address, a name, a radio, an announcement - keeps it listed.
+// sign - an address, a name, a radio, an announcement, a user's setting -
+// keeps it listed.
 func onlyAPortAddress(d Device) bool {
 	switch {
-	case d.IP != "", d.Hostname != "", d.Name != d.MAC:
+	case d.IP != "", d.Hostname != "", !isMACLike(d.Name):
 		return false
-	case d.NameOverride != "", d.TypeOverride != "", d.IconOverride != "":
+	case d.NameOverride != "", d.TypeOverride != "", d.IconOverride != "", d.NotifyOffline:
 		return false
 	case len(d.AliasMacs) > 0, d.Lldp != nil:
 		return false
@@ -108,16 +116,36 @@ func macValue(mac string) (uint64, bool) {
 }
 
 // foldUniFiPortMACs takes UniFi port addresses out of the live list and
-// lists them, read-only, on the device they belong to. The set is kept for
-// ghostDevices, so a folded address that was remembered before does not
-// come back as an offline ghost. It is recomputed on every call: without
-// the controller, the addresses are listed again as before.
+// lists them, read-only, on the device they belong to. It is recomputed on
+// every call and stores nothing: without the controller, the addresses are
+// listed again as before.
 func (l *Live) foldUniFiPortMACs(devices []Device) []Device {
-	folded := uniFiPortMACs(devices, l.unifiInventoryCached())
-	l.unifi.mu.Lock()
-	l.unifi.folded = folded
-	l.unifi.mu.Unlock()
-	return applyPortMACFold(devices, folded)
+	inv := l.unifiInventoryCached()
+	if inv == nil {
+		return devices
+	}
+	var remembered map[string]seenRow
+	if l.db != nil {
+		if byMac, err := l.seenByMac(); err == nil {
+			remembered = make(map[string]seenRow, len(byMac))
+			for mac, r := range byMac {
+				remembered[normSeenMAC(mac)] = r
+			}
+		}
+	}
+	return applyPortMACFold(devices, uniFiPortMACs(devices, inv, remembered))
+}
+
+// uniFiGhostIsPortMAC: a remembered address with no name and no IP that is
+// a UniFi port address is not listed as an offline ghost. The same rule as
+// the live fold, so a port MAC that left the bridge table (its port went
+// down) does not come back as an unknown device.
+func (l *Live) uniFiGhostIsPortMAC(mac string, r seenRow) bool {
+	if r.name != "" || r.ip != "" {
+		return false
+	}
+	_, ok := uniFiPortOwner(mac, l.unifiInventoryCached())
+	return ok
 }
 
 // applyPortMACFold is the pure half of foldUniFiPortMACs.
@@ -141,12 +169,4 @@ func applyPortMACFold(devices []Device, folded map[string]string) []Device {
 		out = append(out, d)
 	}
 	return out
-}
-
-// uniFiFolded reports whether a MAC was last folded as a UniFi port address.
-func (l *Live) uniFiFolded(mac string) bool {
-	l.unifi.mu.Lock()
-	defer l.unifi.mu.Unlock()
-	_, ok := l.unifi.folded[mac]
-	return ok
 }
