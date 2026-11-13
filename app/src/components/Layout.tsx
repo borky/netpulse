@@ -36,6 +36,7 @@ import { UpdateConfirmToast } from '@/components/UpdateConfirmToast'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useServicesVisibility } from '@/hooks/useServicesVisibility'
 import { cn, exitDemo } from '@/lib/utils'
+import { isNameless } from '@/data/types'
 
 // ---------------------------------------------------------------------------
 // Navegación
@@ -80,7 +81,7 @@ function useNavBadge(to: string): number {
   }
   if (to === '/devices') {
     // Misma definición que la tarjeta de alta (#772): conectados sin nombre.
-    return devices.filter((d) => d.online && d.name === d.mac).length
+    return devices.filter((d) => d.online && isNameless(d)).length
   }
   return 0
 }

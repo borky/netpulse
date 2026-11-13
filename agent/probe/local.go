@@ -1287,15 +1287,15 @@ func (p *Prober) probeDiscovery(ctx context.Context, wireless *WirelessData) *Di
 		dd = &DiscoveryData{}
 	}
 	// Host records: a device that announces only its name (no service) shows
-	// up here and nowhere else. These win over a service instance name,
-	// which is the service's label rather than the device's own.
+	// up here and nowhere else. Both sources give host names; the better of
+	// the two wins (BetterMdnsName), the same one on every poll.
 	if out := p.runBest(ctx, CmdMdnsHosts, 5*time.Second); strings.TrimSpace(out) != "" {
 		if hosts := ParseMdnsHosts([]byte(out)); len(hosts) > 0 {
 			if dd.HostByIP == nil {
 				dd.HostByIP = map[string]string{}
 			}
 			for ip, name := range hosts {
-				dd.HostByIP[ip] = name
+				dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], name)
 			}
 		}
 	}
@@ -1308,7 +1308,7 @@ func (p *Prober) probeDiscovery(ctx context.Context, wireless *WirelessData) *Di
 			}
 		}
 	}
-	if len(dd.Services) == 0 && len(dd.HostByIP) == 0 && len(dd.RandomMACs) == 0 {
+	if len(dd.Services) == 0 && len(dd.HostByIP) == 0 && len(dd.RandomMACs) == 0 && len(dd.DeviceByIP) == 0 {
 		return nil
 	}
 	return dd
