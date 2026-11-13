@@ -401,6 +401,10 @@ type Device struct {
 	// RandomMAC: true if the MAC has the locally-administered bit set
 	// (typical of iOS/Android WiFi privacy features).
 	RandomMAC bool `json:"randomMac,omitempty"`
+	// DhcpFingerprint: the operating system its DHCP parameter request list
+	// (option 55) matched, such as "iOS" or "Windows"; empty when the list is
+	// unknown or the router does not record it (internal/dhcpfp).
+	DhcpFingerprint string `json:"dhcpFingerprint,omitempty"`
 	// --- tiempos / overrides ---
 	// LeaseRemaining: segundos restantes del lease DHCP (nil si no hay lease).
 	LeaseRemaining *int `json:"leaseRemaining,omitempty"`

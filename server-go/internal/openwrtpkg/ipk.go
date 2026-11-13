@@ -72,6 +72,10 @@ func BuildIPK(goarch, version string, binary []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	dhcpHook, err := files.ReadFile("files/netpulse-agent.dhcp-hotplug")
+	if err != nil {
+		return nil, err
+	}
 
 	control, err := tarGz([]tarEntry{
 		{name: "./control", mode: 0o644, body: controlFile(version, arch)},
@@ -87,6 +91,8 @@ func BuildIPK(goarch, version string, binary []byte) ([]byte, error) {
 		{name: "./etc/init.d/netpulse-agent", mode: 0o755, body: initScript},
 		{name: "./etc/config/netpulse-agent", mode: 0o644, body: configFile},
 		{name: "./etc/uci-defaults/90-netpulse-agent", mode: 0o755, body: defaults},
+		// DHCP fingerprints: dnsmasq runs it on every lease (see the script).
+		{name: "./etc/hotplug.d/dhcp/50-netpulse-agent", mode: 0o755, body: dhcpHook},
 	})
 	if err != nil {
 		return nil, err
@@ -120,6 +126,20 @@ if [ -x /etc/init.d/netpulse-agent ]; then
 	/etc/init.d/netpulse-agent enabled && /etc/init.d/netpulse-agent restart
 fi
 [ -x /etc/uci-defaults/90-netpulse-agent ] && sh /etc/uci-defaults/90-netpulse-agent
+# The DHCP fingerprint hook (/etc/hotplug.d/dhcp) only runs when dnsmasq was
+# started with --dhcp-script, which OpenWrt's init adds once that directory
+# holds a script. Restart dnsmasq once if it is running without it; a
+# later upgrade finds it already there and leaves DHCP alone.
+if [ -x /etc/init.d/dnsmasq ]; then
+	pids=$(pidof dnsmasq)
+	hooked=0
+	for p in $pids; do
+		tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q -- '--dhcp-script' && hooked=1
+	done
+	if [ -n "$pids" ] && [ "$hooked" = 0 ]; then
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+	fi
+fi
 exit 0
 `)
 

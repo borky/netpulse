@@ -443,6 +443,7 @@
     "detail": {
       "linkedMacs": "MACs enlazadas",
       "dhcpLease": "Concesión DHCP",
+      "dhcpFingerprint": "SO (huella DHCP)",
       "firstSeen": "Primera vez vista",
       "lastSeen": "Última vez vista",
       "infra": "Infraestructura",
