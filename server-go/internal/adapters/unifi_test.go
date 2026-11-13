@@ -285,3 +285,33 @@ func TestUnplacedUniFiReasons(t *testing.T) {
 		}
 	}
 }
+
+// A station on a UniFi AP takes the controller's signal: without it the UI
+// draws a cable, and a remembered one is stale.
+func TestApplyUniFiInfraSetsSignal(t *testing.T) {
+	const ap = "02:00:00:00:00:20"
+	stale := -80
+	devices := []Device{
+		{MAC: "02:00:00:00:00:01", Band: "cable"},
+		{MAC: "02:00:00:00:00:02", Band: "cable", SignalDbm: &stale},
+		{MAC: "02:00:00:00:00:03", Band: "cable"},
+	}
+	inv := &unifiInventory{
+		devices: map[string]unifi.Device{ap: {MAC: ap, Kind: "ap"}},
+		clients: map[string]unifi.Client{
+			"02:00:00:00:00:01": {MAC: "02:00:00:00:00:01", APMAC: ap, Band: "5 GHz", SignalDbm: -60},
+			"02:00:00:00:00:02": {MAC: "02:00:00:00:00:02", APMAC: ap, Band: "2.4 GHz", SignalDbm: -55},
+			"02:00:00:00:00:03": {MAC: "02:00:00:00:00:03", APMAC: ap, Band: "5 GHz"}, // no signal reported
+		},
+	}
+	applyUniFiInfra(devices, nil, inv, "gw")
+	if d := devices[0]; d.SignalDbm == nil || *d.SignalDbm != -60 || d.Band != "5 GHz" {
+		t.Fatalf("no signal before: %+v", d)
+	}
+	if d := devices[1]; d.SignalDbm == nil || *d.SignalDbm != -55 {
+		t.Fatalf("stale signal kept: %+v", d)
+	}
+	if d := devices[2]; d.SignalDbm != nil {
+		t.Fatalf("a missing reading must stay missing: %+v", d)
+	}
+}
