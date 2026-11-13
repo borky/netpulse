@@ -161,3 +161,21 @@ func TestParsedShapesMarshalBack(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUnplacedClientsAndRawStation(t *testing.T) {
+	raw := []byte(`[
+	  {"mac":"02:00:00:00:00:01","is_wired":false,"ap_mac":"02:00:00:00:00:20","radio":"na"},
+	  {"mac":"02:00:00:00:00:02","is_wired":false},
+	  {"mac":"02:00:00:00:00:03","is_wired":true,"ap_mac":"02:00:00:00:00:20"}
+	]`)
+	u := UnplacedClients(raw)
+	if len(u) != 2 || u["02:00:00:00:00:02"] == "" || u["02:00:00:00:00:03"] == "" {
+		t.Fatalf("unplaced: %+v", u)
+	}
+	if r := RawStation(raw, "02:00:00:00:00:01"); r == "" {
+		t.Fatal("raw station not found")
+	}
+	if RawStation(raw, "02:00:00:00:00:99") != "" {
+		t.Fatal("unknown mac found")
+	}
+}
