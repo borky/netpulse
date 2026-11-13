@@ -146,3 +146,17 @@ func TestCleanMdnsTextDropsFormatCharacters(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+// The flat shape: two devices announcing under the same instance name keep
+// their own services.
+func TestParseMdnsBrowseFlatServicesByIP(t *testing.T) {
+	raw := `{"Android._googlecast._tcp.local": {"ipv4": "192.0.2.40"},
+	        "Android._spotify-connect._tcp.local": {"ipv4": "192.0.2.41"}}`
+	dd := ParseMdnsBrowse([]byte(raw))
+	if s := dd.ServicesByIP["192.0.2.40"]; len(s) != 1 || s[0] != "_googlecast._tcp" {
+		t.Fatalf(".40: %+v", s)
+	}
+	if s := dd.ServicesByIP["192.0.2.41"]; len(s) != 1 || s[0] != "_spotify-connect._tcp" {
+		t.Fatalf(".41: %+v", s)
+	}
+}
