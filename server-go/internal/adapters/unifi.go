@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,8 @@ type unifiInventory struct {
 	devices map[string]unifi.Device
 	// clients: placement by client MAC.
 	clients map[string]unifi.Client
+	// unplaced: stations the controller listed without a place, by MAC.
+	unplaced map[string]string
 }
 
 type unifiCache struct {
@@ -40,6 +43,9 @@ type unifiCache struct {
 	inv  *unifiInventory
 	at   time.Time
 	last string // last error, to log a repeated failure only once
+	// logged: the unplaced-client reason last logged per MAC, so each
+	// client's reason is logged once, and again only when it changes.
+	logged map[string]string
 }
 
 // unifiInventoryCached polls the controller at most once per TTL. A failure
@@ -60,7 +66,8 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	devices, clients, err := unifi.NewClient(cfg).Inventory(ctx)
+	api := unifi.NewClient(cfg)
+	devices, clients, err := api.Inventory(ctx)
 	if err != nil {
 		if msg := err.Error(); msg != l.unifi.last {
 			log.Printf("[unifi] inventory failed, keeping the previous one: %v", err)
@@ -82,6 +89,18 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 	for _, c := range clients {
 		inv.clients[c.MAC] = c
 	}
+	inv.unplaced = api.Unplaced
+	// NETPULSE_UNIFI_TRACE=<mac>[,<mac>]: log the controller's record for
+	// those clients at each read, to see what it says about one device.
+	for _, mac := range strings.Split(os.Getenv("NETPULSE_UNIFI_TRACE"), ",") {
+		if mac = strings.TrimSpace(mac); mac != "" {
+			rec := unifi.RawStation(api.RawClients, mac)
+			if rec == "" {
+				rec = "(not in the controller's station list)"
+			}
+			log.Printf("[unifi] trace %s: %s", strings.ToUpper(mac), rec)
+		}
+	}
 	l.unifi.inv, l.unifi.at = inv, time.Now()
 	return inv
 }
@@ -100,7 +119,80 @@ func (l *Live) gatewayID() string {
 // sealUniFiInfra applies the controller's inventory over what the poller
 // inferred. See applyUniFiInfra for the rules.
 func (l *Live) sealUniFiInfra(devices []Device, dists []DistributionNode, gatewayID string) []DistributionNode {
-	return applyUniFiInfra(devices, dists, l.unifiInventoryCached(), gatewayID)
+	inv := l.unifiInventoryCached()
+	out := applyUniFiInfra(devices, dists, inv, gatewayID)
+	l.logUnplacedUniFiClients(devices, inv)
+	return out
+}
+
+// logUnplacedUniFiClients says, once per client and reason, why a station
+// the controller lists was not placed. Such a client keeps what the router
+// inferred - a wireless one behind a UniFi AP then shows as wired - and
+// nothing else in the logs would say so.
+func (l *Live) logUnplacedUniFiClients(devices []Device, inv *unifiInventory) {
+	if inv == nil {
+		return
+	}
+	reasons := unplacedUniFiReasons(devices, inv)
+	l.unifi.mu.Lock()
+	defer l.unifi.mu.Unlock()
+	if l.unifi.logged == nil {
+		l.unifi.logged = map[string]string{}
+	}
+	for mac, why := range reasons {
+		if l.unifi.logged[mac] != why {
+			log.Printf("[unifi] client %s not placed: %s", mac, why)
+			l.unifi.logged[mac] = why
+		}
+	}
+	for mac := range l.unifi.logged {
+		if _, still := reasons[mac]; !still {
+			delete(l.unifi.logged, mac)
+		}
+	}
+}
+
+// unplacedUniFiReasons: for each station of the controller that NetPulse
+// also sees but cannot place, why. Clients NetPulse does not see at all are
+// left out: there is nothing wrong to show for them.
+func unplacedUniFiReasons(devices []Device, inv *unifiInventory) map[string]string {
+	seen := make(map[string]bool, len(devices))
+	for _, d := range devices {
+		seen[d.MAC] = true
+	}
+	out := map[string]string{}
+	for mac, why := range inv.unplaced {
+		if seen[mac] {
+			out[mac] = "the controller gives no place: " + why
+		}
+	}
+	for mac, c := range inv.clients {
+		if !seen[mac] {
+			continue
+		}
+		switch {
+		case c.SwitchMAC != "":
+			if _, ok := inv.devices[c.SwitchMAC]; !ok {
+				out[mac] = "its switch " + c.SwitchMAC + " is not in the controller's switch/AP list"
+			}
+		case c.APMAC != "":
+			if _, ok := inv.devices[c.APMAC]; !ok {
+				out[mac] = "its AP " + c.APMAC + " is not in the controller's switch/AP list"
+			}
+		}
+	}
+	// Placed on an AP, yet the band did not take: something skipped it or
+	// wrote over it.
+	for _, d := range devices {
+		c, ok := inv.clients[d.MAC]
+		if !ok || c.APMAC == "" || out[d.MAC] != "" {
+			continue
+		}
+		if _, known := inv.devices[c.APMAC]; known && d.Band != c.Band {
+			out[d.MAC] = fmt.Sprintf("on AP %s at %s per the controller, but its band here is %q (infra=%q attachTo=%q)", c.APMAC, c.Band, d.Band, d.Infra, d.AttachTo)
+		}
+	}
+	return out
 }
 
 // applyUniFiInfra is the pure half: it enriches the distribution nodes the

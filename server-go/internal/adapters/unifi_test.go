@@ -255,3 +255,33 @@ func TestApplyUniFiInfraIgnoresAZeroSpeed(t *testing.T) {
 		t.Fatalf("speed: %+v", devices[0])
 	}
 }
+
+// Why a station the controller lists stays unplaced, for the log.
+func TestUnplacedUniFiReasons(t *testing.T) {
+	const ap, ghostAP = "02:00:00:00:00:20", "02:00:00:00:00:29"
+	inv := &unifiInventory{
+		devices: map[string]unifi.Device{ap: {MAC: ap, Kind: "ap"}},
+		clients: map[string]unifi.Client{
+			"02:00:00:00:00:01": {MAC: "02:00:00:00:00:01", APMAC: ap, Band: "5 GHz"},      // placed
+			"02:00:00:00:00:02": {MAC: "02:00:00:00:00:02", APMAC: ghostAP, Band: "5 GHz"}, // unknown AP
+			"02:00:00:00:00:03": {MAC: "02:00:00:00:00:03", APMAC: ap, Band: "5 GHz"},      // band lost
+			"02:00:00:00:00:09": {MAC: "02:00:00:00:00:09", APMAC: ghostAP},                // not seen here
+		},
+		unplaced: map[string]string{"02:00:00:00:00:04": "wireless, no AP given"},
+	}
+	devices := []Device{
+		{MAC: "02:00:00:00:00:01", Band: "5 GHz"},
+		{MAC: "02:00:00:00:00:02", Band: "cable"},
+		{MAC: "02:00:00:00:00:03", Band: "cable"},
+		{MAC: "02:00:00:00:00:04", Band: "cable"},
+	}
+	got := unplacedUniFiReasons(devices, inv)
+	if len(got) != 3 {
+		t.Fatalf("reasons: %+v", got)
+	}
+	for _, mac := range []string{"02:00:00:00:00:02", "02:00:00:00:00:03", "02:00:00:00:00:04"} {
+		if got[mac] == "" {
+			t.Errorf("%s: no reason", mac)
+		}
+	}
+}

@@ -103,6 +103,12 @@ type ClientAPI struct {
 	// network application under /proxy/network, a standalone controller
 	// serves it at the root.
 	base string
+	// Unplaced: after Inventory, the stations the controller listed that
+	// ParseClients could not place, by MAC, with the reason. For diagnosis.
+	Unplaced map[string]string
+	// RawClients: the station list as the controller sent it, kept from the
+	// last Inventory for NETPULSE_UNIFI_TRACE.
+	RawClients []byte
 }
 
 // NewClient builds a client; nothing happens until a call is made.
@@ -201,6 +207,8 @@ func (c *ClientAPI) Inventory(ctx context.Context) ([]Device, []Client, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("stat/sta: %w", err)
 	}
+	c.Unplaced = UnplacedClients(rawClients)
+	c.RawClients = rawClients
 	return devices, clients, nil
 }
 
@@ -306,6 +314,47 @@ func ParseClients(raw []byte) ([]Client, error) {
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// UnplacedClients lists the stations ParseClients drops, by upper-case MAC,
+// with why: a client the controller knows but NetPulse cannot place shows
+// as wired (its MAC is only on the router's bridge port), and nothing said
+// so before.
+func UnplacedClients(raw []byte) map[string]string {
+	var in []rawClient
+	if json.Unmarshal(raw, &in) != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, s := range in {
+		mac := strings.ToUpper(s.MAC)
+		switch {
+		case mac == "":
+		case s.IsWired && (s.SwMAC == "" || s.SwPort == 0):
+			out[mac] = fmt.Sprintf("wired, no switch port given (sw_mac=%q sw_port=%d, ap_mac=%q)", s.SwMAC, s.SwPort, s.ApMAC)
+		case !s.IsWired && s.ApMAC == "":
+			out[mac] = "wireless, no AP given"
+		}
+	}
+	return out
+}
+
+// RawStation returns the controller's own record for one MAC from a raw
+// station list, compacted, or "" when it is not listed.
+func RawStation(raw []byte, mac string) string {
+	var in []json.RawMessage
+	if json.Unmarshal(raw, &in) != nil {
+		return ""
+	}
+	for _, r := range in {
+		var s struct {
+			MAC string `json:"mac"`
+		}
+		if json.Unmarshal(r, &s) == nil && strings.EqualFold(s.MAC, mac) {
+			return string(r)
+		}
+	}
+	return ""
 }
 
 // band maps the controller's radio code to the label the rest of NetPulse
