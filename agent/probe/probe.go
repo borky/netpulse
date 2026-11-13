@@ -2250,7 +2250,7 @@ func ParseMdnsHosts(raw []byte) map[string]string {
 		if h.IPv4 == "" {
 			continue
 		}
-		out[h.IPv4] = BetterMdnsName(out[h.IPv4], strings.TrimSuffix(name, ".local"))
+		out[h.IPv4] = BetterMdnsName(out[h.IPv4], cleanMdnsText(strings.TrimSuffix(name, ".local")))
 	}
 	return out
 }
@@ -2339,6 +2339,7 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 		if idx := strings.Index(key, "."); idx > 0 {
 			hostname = key[:idx]
 		}
+		hostname = cleanMdnsText(hostname)
 		parts := strings.SplitN(key, ".", 3)
 		if len(parts) >= 2 && strings.HasPrefix(parts[1], "_") {
 			svcType := parts[1]
@@ -2353,6 +2354,9 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 		if json.Unmarshal(val, &entry) == nil {
 			if ip := firstIPv4(entry.IPv4); ip != "" {
 				dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], hostname)
+				for _, svc := range dd.Services[hostname] {
+					dd.ServicesByIP[ip] = appendUnique(dd.ServicesByIP[ip], svc)
+				}
 			}
 		}
 	}
@@ -2361,10 +2365,12 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 			if dd.DeviceByIP == nil {
 				dd.DeviceByIP = map[string]MdnsDevice{}
 			}
-			dd.DeviceByIP[ip] = MdnsDevice{Name: c.name, Model: c.model}
+			dd.DeviceByIP[ip] = MdnsDevice{Name: c.name, Model: c.model, NamePrio: c.namePrio, ModelPrio: c.modelPrio}
 		}
 	}
-	dd.FoldServicesByIP()
+	if len(dd.ServicesByIP) == 0 {
+		dd.ServicesByIP = nil
+	}
 	if len(dd.Services) == 0 && len(dd.HostByIP) == 0 && dd.DeviceByIP == nil {
 		return nil
 	}
@@ -2414,9 +2420,9 @@ func parseMdnsService(dd *DiscoveryData, cands map[string]*mdnsCandidate, svcTyp
 	sort.Strings(names)
 	for _, instance := range names {
 		rec := instances[instance]
-		host := strings.TrimSuffix(rec.Host, ".local")
+		host := cleanMdnsText(strings.TrimSuffix(rec.Host, ".local"))
 		if host == "" {
-			host = instance
+			host = cleanMdnsText(instance)
 		}
 		dd.Services[host] = appendUnique(dd.Services[host], svcType)
 		ip := firstIPv4(rec.IPv4)
@@ -2456,25 +2462,6 @@ func parseMdnsService(dd *DiscoveryData, cands map[string]*mdnsCandidate, svcTyp
 	}
 }
 
-// FoldServicesByIP files every service seen at an address under the host
-// name chosen for that address. A device announces its services under one
-// host record and may be named by another (a UUID versus "Android"): keyed
-// by host alone, the services would be lost with the name not chosen.
-func (dd *DiscoveryData) FoldServicesByIP() {
-	for ip, svcs := range dd.ServicesByIP {
-		host, ok := dd.HostByIP[ip]
-		if !ok {
-			continue
-		}
-		if dd.Services == nil {
-			dd.Services = map[string][]string{}
-		}
-		for _, svc := range svcs {
-			dd.Services[host] = appendUnique(dd.Services[host], svc)
-		}
-	}
-}
-
 // firstIPv4 reads umdns's ipv4 field, a string or, with "array": true, a list.
 func firstIPv4(raw json.RawMessage) string {
 	var one string
@@ -2491,10 +2478,11 @@ func firstIPv4(raw json.RawMessage) string {
 // cleanMdnsText makes a TXT value fit for a name: no control characters,
 // trimmed, at most 64 runes. The values come from devices on the LAN.
 func cleanMdnsText(s string) string {
-	// Control characters (C0 and C1) and format characters: bidi
-	// overrides and zero-width marks would let a name read as another.
+	// Control characters (C0 and C1), format characters (bidi overrides and
+	// zero-width marks would let a name read as another) and the Unicode
+	// line and paragraph separators, which break alert and chat text.
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return -1
 		}
 		return r

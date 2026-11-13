@@ -3290,6 +3290,7 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 	randomMACs := map[string]bool{}
 	mdnsSvcByHost := map[string][]string{}
 	mdnsDevByIP := map[string]probe.MdnsDevice{}
+	mdnsSvcByIP := map[string][]string{}
 	for _, p := range polled {
 		if p.discovery == nil {
 			continue
@@ -3300,22 +3301,22 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 			mdnsHostByIP[ip] = probe.BetterMdnsName(mdnsHostByIP[ip], host)
 		}
 		for ip, dev := range p.discovery.DeviceByIP {
-			// Lexically smaller on a conflict: the same on every poll,
-			// whatever order the routers come in.
-			cur := mdnsDevByIP[ip]
-			if dev.Name != "" && (cur.Name == "" || dev.Name < cur.Name) {
-				cur.Name = dev.Name
+			// The agents' own rule (Cast over AirPlay, then lexical): the
+			// same on every poll, whatever order the routers come in.
+			mdnsDevByIP[ip] = probe.BetterMdnsDevice(mdnsDevByIP[ip], dev)
+		}
+		for ip, svcs := range p.discovery.ServicesByIP {
+			for _, svc := range svcs {
+				mdnsSvcByIP[ip] = appendUniqueStr(mdnsSvcByIP[ip], svc)
 			}
-			if dev.Model != "" && (cur.Model == "" || dev.Model < cur.Model) {
-				cur.Model = dev.Model
-			}
-			mdnsDevByIP[ip] = cur
 		}
 		for _, mac := range p.discovery.RandomMACs {
 			randomMACs[mac] = true
 		}
 		for host, svcs := range p.discovery.Services {
-			mdnsSvcByHost[host] = svcs
+			for _, svc := range svcs {
+				mdnsSvcByHost[host] = appendUniqueStr(mdnsSvcByHost[host], svc)
+			}
 		}
 	}
 	type knownInfo struct {
@@ -3865,9 +3866,14 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 			mdnsDev = mdnsDevByIP[d.IP]
 			if host, ok := mdnsHostByIP[d.IP]; ok {
 				mdnsHost = host
-				if svcs, ok := mdnsSvcByHost[host]; ok {
-					d.MdnsServices = svcs
-				}
+			}
+			// By address: a host name may be another record's, or one many
+			// devices share. Agents without servicesByIp key only by host,
+			// and a generic host name is not trusted for that.
+			if svcs := mdnsSvcByIP[d.IP]; len(svcs) > 0 {
+				d.MdnsServices = sortedCopy(svcs)
+			} else if svcs, ok := mdnsSvcByHost[mdnsHost]; ok && mdnsHost != "" && !probe.MdnsNameIsWeak(mdnsHost) {
+				d.MdnsServices = sortedCopy(svcs)
 			}
 		}
 		// A device the lease, the reservation, the allowlist and the manual
@@ -6340,5 +6346,23 @@ func networkInfos(nets []probe.UciNetwork, ports []EthPort) []NetworkInfo {
 		}
 		out = append(out, ni)
 	}
+	return out
+}
+
+// appendUniqueStr appends s unless the slice already holds it.
+func appendUniqueStr(list []string, s string) []string {
+	for _, v := range list {
+		if v == s {
+			return list
+		}
+	}
+	return append(list, s)
+}
+
+// sortedCopy returns a sorted copy, so a merged list does not depend on
+// the order the routers came in.
+func sortedCopy(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
 	return out
 }
