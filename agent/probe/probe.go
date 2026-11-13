@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // ---------------------------------------------------------------------------
@@ -2348,14 +2349,23 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 		return nil
 	}
 	dd := &DiscoveryData{
-		Services:   map[string][]string{},
-		HostByIP:   map[string]string{},
-		DeviceByIP: map[string]MdnsDevice{},
+		Services:     map[string][]string{},
+		HostByIP:     map[string]string{},
+		ServicesByIP: map[string][]string{},
 	}
-	for key, val := range browse {
+	cands := map[string]*mdnsCandidate{}
+	// Sorted, so a device with several records gets the same answer on
+	// every poll: Go's map order would pick a different one each time.
+	keys := make([]string, 0, len(browse))
+	for k := range browse {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		val := browse[key]
 		if strings.HasPrefix(key, "_") {
 			// umdns's own shape: service type -> instance -> record.
-			parseMdnsService(dd, key, val)
+			parseMdnsService(dd, cands, key, val)
 			continue
 		}
 		// Flat "instance._svc._tcp.local" -> record, kept for the older shape.
@@ -2380,18 +2390,49 @@ func ParseMdnsBrowse(raw []byte) *DiscoveryData {
 			}
 		}
 	}
-	if len(dd.DeviceByIP) == 0 {
-		dd.DeviceByIP = nil
+	for ip, c := range cands {
+		if c.name != "" || c.model != "" {
+			if dd.DeviceByIP == nil {
+				dd.DeviceByIP = map[string]MdnsDevice{}
+			}
+			dd.DeviceByIP[ip] = MdnsDevice{Name: c.name, Model: c.model}
+		}
 	}
+	dd.FoldServicesByIP()
 	if len(dd.Services) == 0 && len(dd.HostByIP) == 0 && dd.DeviceByIP == nil {
 		return nil
 	}
 	return dd
 }
 
+// mdnsCandidate collects what the records of one address say, keeping the
+// best-ranked name and model: a Cast name over an AirPlay one, and on a
+// tie the lexically smaller, so the choice never depends on order.
+type mdnsCandidate struct {
+	name, model         string
+	namePrio, modelPrio int
+}
+
+func (c *mdnsCandidate) offerName(v string, prio int) {
+	if v != "" && (c.name == "" || prio > c.namePrio || (prio == c.namePrio && v < c.name)) {
+		c.name, c.namePrio = v, prio
+	}
+}
+
+func (c *mdnsCandidate) offerModel(v string, prio int) {
+	if v != "" && (c.model == "" || prio > c.modelPrio || (prio == c.modelPrio && v < c.model)) {
+		c.model, c.modelPrio = v, prio
+	}
+}
+
+// castGroupModel is the model a Cast speaker group announces. The group
+// lives on its leader's address, so its name and model are the group's,
+// not the device's.
+const castGroupModel = "google cast group"
+
 // parseMdnsService reads one service type of `ubus call umdns browse`:
 // {"<instance>": {"host": "x.local", "ipv4": "a.b.c.d" or [...], "txt": [...]}}.
-func parseMdnsService(dd *DiscoveryData, svcType string, raw json.RawMessage) {
+func parseMdnsService(dd *DiscoveryData, cands map[string]*mdnsCandidate, svcType string, raw json.RawMessage) {
 	var instances map[string]struct {
 		Host string          `json:"host"`
 		IPv4 json.RawMessage `json:"ipv4"`
@@ -2400,7 +2441,13 @@ func parseMdnsService(dd *DiscoveryData, svcType string, raw json.RawMessage) {
 	if json.Unmarshal(raw, &instances) != nil {
 		return
 	}
-	for instance, rec := range instances {
+	names := make([]string, 0, len(instances))
+	for n := range instances {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, instance := range names {
+		rec := instances[instance]
 		host := strings.TrimSuffix(rec.Host, ".local")
 		if host == "" {
 			host = instance
@@ -2410,6 +2457,7 @@ func parseMdnsService(dd *DiscoveryData, svcType string, raw json.RawMessage) {
 		if ip == "" {
 			continue
 		}
+		dd.ServicesByIP[ip] = appendUnique(dd.ServicesByIP[ip], svcType)
 		if rec.Host != "" {
 			dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], host)
 		}
@@ -2419,21 +2467,44 @@ func parseMdnsService(dd *DiscoveryData, svcType string, raw json.RawMessage) {
 				txt[strings.ToLower(k)] = v
 			}
 		}
-		info := dd.DeviceByIP[ip]
+		c := cands[ip]
+		if c == nil {
+			c = &mdnsCandidate{}
+			cands[ip] = c
+		}
 		switch svcType {
 		case "_googlecast._tcp":
 			// fn: the name the owner gave the Cast device; md: its model.
-			info.Name = firstNonEmpty(info.Name, cleanMdnsText(txt["fn"]))
-			info.Model = firstNonEmpty(info.Model, cleanMdnsText(txt["md"]))
+			if strings.EqualFold(strings.TrimSpace(txt["md"]), castGroupModel) {
+				continue
+			}
+			c.offerName(cleanMdnsText(txt["fn"]), 2)
+			c.offerModel(cleanMdnsText(txt["md"]), 2)
 		case "_airplay._tcp":
 			// The instance name is the AirPlay name the owner set.
-			info.Name = firstNonEmpty(info.Name, cleanMdnsText(instance))
-			info.Model = firstNonEmpty(info.Model, cleanMdnsText(txt["model"]))
+			c.offerName(cleanMdnsText(instance), 1)
+			c.offerModel(cleanMdnsText(txt["model"]), 1)
 		case "_raop._tcp":
-			info.Model = firstNonEmpty(info.Model, cleanMdnsText(txt["am"]))
+			c.offerModel(cleanMdnsText(txt["am"]), 0)
 		}
-		if info != (MdnsDevice{}) {
-			dd.DeviceByIP[ip] = info
+	}
+}
+
+// FoldServicesByIP files every service seen at an address under the host
+// name chosen for that address. A device announces its services under one
+// host record and may be named by another (a UUID versus "Android"): keyed
+// by host alone, the services would be lost with the name not chosen.
+func (dd *DiscoveryData) FoldServicesByIP() {
+	for ip, svcs := range dd.ServicesByIP {
+		host, ok := dd.HostByIP[ip]
+		if !ok {
+			continue
+		}
+		if dd.Services == nil {
+			dd.Services = map[string][]string{}
+		}
+		for _, svc := range svcs {
+			dd.Services[host] = appendUnique(dd.Services[host], svc)
 		}
 	}
 }
@@ -2454,8 +2525,10 @@ func firstIPv4(raw json.RawMessage) string {
 // cleanMdnsText makes a TXT value fit for a name: no control characters,
 // trimmed, at most 64 runes. The values come from devices on the LAN.
 func cleanMdnsText(s string) string {
+	// Control characters (C0 and C1) and format characters: bidi
+	// overrides and zero-width marks would let a name read as another.
 	s = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r

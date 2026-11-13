@@ -3304,11 +3304,13 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 			mdnsHostByIP[ip] = probe.BetterMdnsName(mdnsHostByIP[ip], host)
 		}
 		for ip, dev := range p.discovery.DeviceByIP {
+			// Lexically smaller on a conflict: the same on every poll,
+			// whatever order the routers come in.
 			cur := mdnsDevByIP[ip]
-			if cur.Name == "" {
+			if dev.Name != "" && (cur.Name == "" || dev.Name < cur.Name) {
 				cur.Name = dev.Name
 			}
-			if cur.Model == "" {
+			if dev.Model != "" && (cur.Model == "" || dev.Model < cur.Model) {
 				cur.Model = dev.Model
 			}
 			mdnsDevByIP[ip] = cur
@@ -3877,6 +3879,7 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 		// gave it (a Cast or AirPlay name), its mDNS host name, its PTR
 		// record (static-IP hosts never take a lease), and only then an mDNS
 		// host name that says nothing - a UUID, a bare "Android".
+		unnamed := d.Name == mac
 		if d.Name == mac && mdnsDev.Name != "" {
 			d.Name = mdnsDev.Name
 		}
@@ -3892,11 +3895,13 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 			d.Name = mdnsHost
 		}
 		// Tipo estimado con reglas deterministas (hostname, huella DHCP y
-		// capacidades LLDP), once the name is final. The model a device
-		// announces outranks the DHCP vendor class: an Android TV sends
-		// Android's vendor class, and only its model says it is a TV.
+		// capacidades LLDP), once the name is final. For a device nothing
+		// but mDNS named, the model it announces outranks the DHCP vendor
+		// class: an Android TV sends Android's vendor class, and only its
+		// model says it is a TV. A device with a name of its own keeps the
+		// type that name and its DHCP data give.
 		d.Type = GuessDeviceType(d.Name, d.Manufacturer, vendorClass, clientID, lldpCapsByMac[mac])
-		if typeFromName(d.Name) == "" {
+		if unnamed && typeFromName(d.Name) == "" {
 			if t := typeFromName(mdnsDev.Model); t != "" {
 				d.Type = t
 			}
@@ -3933,7 +3938,7 @@ func (l *Live) buildDevices(polled map[string]*routerPolled, wanPort string) []D
 		// list of private-MAC phones is not a list of addresses. The label
 		// is a guess, not an identity: NameInferred keeps the device
 		// "unknown" for the alert and the counters that key on a name.
-		if d.Name == mac && d.DhcpFingerprint != "" {
+		if d.Name == mac && d.DhcpFingerprint != "" && isMACLike(mac) {
 			d.Name = d.DhcpFingerprint + "-" + strings.ToUpper(strings.ReplaceAll(mac[len(mac)-5:], ":", ""))
 			d.NameInferred = true
 		}
