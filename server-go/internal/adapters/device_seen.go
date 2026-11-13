@@ -500,6 +500,13 @@ func (l *Live) ghostDevices(devices []Device) []Device {
 		tomb = map[string]bool{}
 	}
 	now := l.seenNow()
+	// Read once for the whole list: it is cached, but each read takes a
+	// lock and the config from the database.
+	unifiInv := l.unifiInventoryCached()
+	var userSet map[string]bool
+	if unifiInv != nil {
+		userSet = l.macsTheUserSetUp(links)
+	}
 	var out []Device
 	for rawMac, s := range byMac {
 		mac := normSeenMAC(rawMac)
@@ -509,7 +516,7 @@ func (l *Live) ghostDevices(devices []Device) []Device {
 		if tomb[mac] {
 			continue // #1278: borrado a mano, fuera de la lista de fantasmas
 		}
-		if l.uniFiGhostIsPortMAC(mac, s) {
+		if unifiInv != nil && uniFiGhostIsPortMAC(mac, s, unifiInv, userSet) {
 			continue // a UniFi port address, listed on its switch or AP
 		}
 		if canonical, linked := links[mac]; linked {
