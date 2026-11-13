@@ -81,3 +81,52 @@ func TestParseMdnsBrowseUmdnsShape(t *testing.T) {
 		t.Fatalf("cast services: %+v", dd.Services)
 	}
 }
+
+// A TV with both Cast and AirPlay, and a Cast speaker group led from the
+// same address: the Cast name wins, the group never does, and the answer is
+// the same on every parse whatever Go's map order.
+func TestParseMdnsBrowseIsStableAndRanked(t *testing.T) {
+	raw := `{
+	  "_googlecast._tcp": {
+	    "Dummy-TV": {"host": "0123abcd-4567-89ef-0123-456789abcdef.local", "ipv4": "192.0.2.40",
+	                 "txt": ["md=BRAVIA 4K Dummy", "fn=Living room"]},
+	    "Dummy-Group": {"host": "0123abcd-4567-89ef-0123-456789abcdef.local", "ipv4": "192.0.2.40",
+	                    "txt": ["md=Google Cast Group", "fn=Downstairs"]}
+	  },
+	  "_airplay._tcp": {
+	    "BRAVIA Dummy AirPlay": {"host": "0123abcd-4567-89ef-0123-456789abcdef.local", "ipv4": "192.0.2.40",
+	                             "txt": ["model=Dummy,1"]}
+	  }
+	}`
+	for i := 0; i < 200; i++ {
+		dd := ParseMdnsBrowse([]byte(raw))
+		if got := dd.DeviceByIP["192.0.2.40"]; got.Name != "Living room" || got.Model != "BRAVIA 4K Dummy" {
+			t.Fatalf("parse %d: %+v", i, got)
+		}
+	}
+}
+
+// Services announced under one host record stay with the address when
+// another record names it.
+func TestFoldServicesByIP(t *testing.T) {
+	raw := `{"_googlecast._tcp": {"Dummy-TV": {"host": "f0e1d2c3-b4a5-9687-7869-5a4b3c2d1e0f.local",
+	          "ipv4": "192.0.2.40", "txt": ["fn=Living room"]}}}`
+	dd := ParseMdnsBrowse([]byte(raw))
+	// The hosts listing names the address "Android", which sorts first.
+	dd.HostByIP["192.0.2.40"] = BetterMdnsName(dd.HostByIP["192.0.2.40"], "Android")
+	dd.FoldServicesByIP()
+	host := dd.HostByIP["192.0.2.40"]
+	if host != "Android" {
+		t.Fatalf("chosen host %q", host)
+	}
+	if svcs := dd.Services[host]; len(svcs) != 1 || svcs[0] != "_googlecast._tcp" {
+		t.Fatalf("services under %q: %+v", host, dd.Services)
+	}
+}
+
+func TestCleanMdnsTextDropsFormatCharacters(t *testing.T) {
+	in := "Liv‮ing​ room\u0085\u0007"
+	if got := cleanMdnsText(in); got != "Living room" {
+		t.Fatalf("%q", got)
+	}
+}

@@ -328,6 +328,10 @@ type DiscoveryData struct {
 	// and its model. A better name than any mDNS host name, which is often
 	// a UUID or a bare "Android".
 	DeviceByIP map[string]MdnsDevice `json:"deviceByIp,omitempty"`
+	// ServicesByIP: the service types seen at each address, folded into
+	// Services under the host name finally chosen (FoldServicesByIP). Not
+	// sent: Services already carries them.
+	ServicesByIP map[string][]string `json:"-"`
 }
 
 // MdnsDevice is a device's self-description from its mDNS TXT records.

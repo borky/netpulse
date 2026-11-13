@@ -251,7 +251,10 @@ func (l *Live) noteDevicesSeen(devices []Device, nowMs int64) []Device {
 		if isMACLike(name) {
 			name = ""
 		}
-		if name == "" && d.Name != "" && !isMACLike(d.Name) {
+		// A label inferred from the DHCP fingerprint is not a name: kept, it
+		// would come back as a real one once the lease expires, and count
+		// the device as a new named client on top of the unknown alert.
+		if name == "" && d.Name != "" && !isMACLike(d.Name) && !d.NameInferred {
 			name = d.Name
 		}
 		// #1818: el alta guarda el primer avistamiento real, no el del ciclo en
