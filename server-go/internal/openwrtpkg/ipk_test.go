@@ -101,6 +101,7 @@ func TestBuildIPKLayout(t *testing.T) {
 		"./etc/init.d/netpulse-agent",
 		"./etc/config/netpulse-agent",
 		"./etc/uci-defaults/90-netpulse-agent",
+		"./etc/hotplug.d/dhcp/50-netpulse-agent",
 	} {
 		if !contains(dataFiles, want) {
 			t.Errorf("data.tar.gz no lleva %s: %v", want, dataFiles)
@@ -109,10 +110,11 @@ func TestBuildIPKLayout(t *testing.T) {
 	// opkg necesita el binario y el init ejecutables; la config, 0644.
 	modes := tarModes(t, data)
 	for name, want := range map[string]int64{
-		"./usr/sbin/netpulse-agent":            0o755,
-		"./etc/init.d/netpulse-agent":          0o755,
-		"./etc/uci-defaults/90-netpulse-agent": 0o755,
-		"./etc/config/netpulse-agent":          0o644,
+		"./usr/sbin/netpulse-agent":              0o755,
+		"./etc/init.d/netpulse-agent":            0o755,
+		"./etc/uci-defaults/90-netpulse-agent":   0o755,
+		"./etc/hotplug.d/dhcp/50-netpulse-agent": 0o755,
+		"./etc/config/netpulse-agent":            0o644,
 	} {
 		if got := modes[name]; got != want {
 			t.Errorf("modo de %s = %o, want %o", name, got, want)

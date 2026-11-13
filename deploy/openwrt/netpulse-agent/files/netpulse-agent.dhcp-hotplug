@@ -1,0 +1,42 @@
+#!/bin/sh
+# NetPulse agent: keep each client's DHCP fingerprint.
+#
+# dnsmasq runs the /etc/hotplug.d/dhcp scripts on every lease it grants or
+# renews, with the request's option 55 (the parameter request list) and
+# option 60 (the vendor class) in its environment. Its lease file keeps
+# neither, and they are the one thing that still tells an operating system
+# apart when the client sends no hostname and uses a private MAC address:
+# every OS asks for its own characteristic set of options.
+#
+# One line per MAC in /tmp/netpulse-agent/dhcp-fingerprints:
+#   mac<TAB>option 55<TAB>option 60<TAB>unix time
+# A newer request replaces the client's line. The agent reads the file on
+# each probe; /tmp does not survive a reboot, and neither do the leases.
+#
+# dnsmasq only runs these scripts when it was started with --dhcp-script,
+# which OpenWrt's init adds when this directory holds a script. The package
+# restarts dnsmasq once at install if it is not already running that way.
+[ "$ACTION" = add ] || [ "$ACTION" = update ] || exit 0
+[ -n "$MACADDR" ] || exit 0
+# At startup dnsmasq replays its lease file through the scripts with no
+# packet behind it (DNSMASQ_DATA_MISSING=1): nothing to record.
+[ -n "$DNSMASQ_REQUESTED_OPTIONS" ] || exit 0
+
+DIR=/tmp/netpulse-agent
+FILE=$DIR/dhcp-fingerprints
+LOCK=/var/lock/netpulse-agent-dhcpfp.lock
+mkdir -p "$DIR" 2>/dev/null || exit 0
+
+mac=$(printf '%s' "$MACADDR" | tr 'A-F' 'a-f')
+opts=$(printf '%s' "$DNSMASQ_REQUESTED_OPTIONS" | tr -cd '0-9,')
+vendor=$(printf '%s' "$DNSMASQ_VENDOR_CLASS" | tr -d '\t\n\r' | cut -c1-128)
+
+if command -v lock >/dev/null 2>&1; then
+	lock "$LOCK"
+	trap 'lock -u "$LOCK"' EXIT
+fi
+{
+	[ -f "$FILE" ] && grep -v "^$mac	" "$FILE" | tail -n 2000
+	printf '%s\t%s\t%s\t%s\n' "$mac" "$opts" "$vendor" "$(date +%s)"
+} > "$FILE.$$" 2>/dev/null && mv "$FILE.$$" "$FILE"
+exit 0

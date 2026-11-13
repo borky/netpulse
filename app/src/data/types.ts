@@ -261,6 +261,8 @@ export interface Device {
   name: string
   type: DeviceType
   manufacturer: string
+  /** OS its DHCP request matched ("iOS", "Windows", ...), when the router records it. */
+  dhcpFingerprint?: string
   ip: string
   mac: string
   routerId: string
