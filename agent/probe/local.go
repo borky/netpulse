@@ -1310,7 +1310,6 @@ func (p *Prober) probeDiscovery(ctx context.Context, wireless *WirelessData) *Di
 			for ip, name := range hosts {
 				dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], name)
 			}
-			dd.FoldServicesByIP()
 		}
 	}
 

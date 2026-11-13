@@ -1,6 +1,10 @@
 package adapters
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gnacho/netpulse/agent/probe"
+)
 
 // A label inferred from the DHCP fingerprint is not stored as a name: it
 // would come back as a real one after the lease expires, and its device
@@ -53,5 +57,56 @@ func TestMergeLinkedDevicesInferredNames(t *testing.T) {
 	}, links)
 	if out[0].Name != "phone-01" || out[0].NameInferred {
 		t.Fatalf("a label must not replace a name: %q inferred %v", out[0].Name, out[0].NameInferred)
+	}
+}
+
+// The name a device really had, remembered from an earlier lease, beats a
+// label inferred from its fingerprint.
+func TestApplyDeviceSeenRestoresNameOverLabel(t *testing.T) {
+	d := openLiveTestDB(t)
+	l := &Live{db: d}
+	if _, err := d.Exec("INSERT INTO device_seen (mac, first_seen, last_seen, name) VALUES ('02:00:00:00:00:50', 1, 2, 'tablet-01')"); err != nil {
+		t.Fatal(err)
+	}
+	out := []Device{{MAC: "02:00:00:00:00:50", Name: "iOS-0050", NameInferred: true, Online: true}}
+	l.applyDeviceSeen(out)
+	if out[0].Name != "tablet-01" || out[0].NameInferred {
+		t.Fatalf("name %q inferred %v", out[0].Name, out[0].NameInferred)
+	}
+}
+
+// Services are found by address, merged across routers; a generic host
+// name shared by several devices does not hand one device's services to
+// another.
+func TestBuildDevicesServicesByIP(t *testing.T) {
+	const tv, other = "02:00:00:00:00:60", "02:00:00:00:00:61"
+	l := NewLive(nil, nil, nil, nil)
+	polled := map[string]*routerPolled{
+		"a": {
+			cfg: RouterConfig{ID: "a", IsGateway: true},
+			fdb: map[string]string{tv: "lan1", other: "lan1"}, arp: map[string]string{}, arpStale: map[string]bool{},
+			leases: []DhcpLease{{MAC: tv, IP: "192.0.2.60"}, {MAC: other, IP: "192.0.2.61"}},
+			discovery: &probe.DiscoveryData{
+				HostByIP: map[string]string{"192.0.2.60": "Android", "192.0.2.61": "Android"},
+				Services: map[string][]string{"Android": {"_googlecast._tcp"}},
+			},
+		},
+		"b": {
+			cfg: RouterConfig{ID: "b"},
+			fdb: map[string]string{}, arp: map[string]string{}, arpStale: map[string]bool{},
+			discovery: &probe.DiscoveryData{
+				ServicesByIP: map[string][]string{"192.0.2.60": {"_googlecast._tcp"}},
+			},
+		},
+	}
+	byMAC := map[string]Device{}
+	for _, d := range l.buildDevices(polled, "") {
+		byMAC[d.MAC] = d
+	}
+	if svcs := byMAC[tv].MdnsServices; len(svcs) != 1 || svcs[0] != "_googlecast._tcp" {
+		t.Fatalf("tv services: %+v", svcs)
+	}
+	if svcs := byMAC[other].MdnsServices; len(svcs) != 0 {
+		t.Fatalf("services leaked through the shared name: %+v", svcs)
 	}
 }
