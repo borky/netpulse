@@ -46,9 +46,6 @@ type unifiCache struct {
 	// logged: the unplaced-client reason last logged per MAC, so each
 	// client's reason is logged once, and again only when it changes.
 	logged map[string]string
-	// folded: UniFi port addresses taken out of the list last poll, port
-	// MAC -> owner base MAC (unifi_portmacs.go).
-	folded map[string]string
 }
 
 // unifiInventoryCached polls the controller at most once per TTL. A failure

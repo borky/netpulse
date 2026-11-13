@@ -510,7 +510,7 @@ func (l *Live) ghostDevices(devices []Device) []Device {
 		if tomb[mac] {
 			continue // #1278: borrado a mano, fuera de la lista de fantasmas
 		}
-		if l.uniFiFolded(mac) {
+		if l.uniFiGhostIsPortMAC(mac, s) {
 			continue // a UniFi port address, listed on its switch or AP
 		}
 		if canonical, linked := links[mac]; linked {

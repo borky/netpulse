@@ -2,7 +2,9 @@ package adapters
 
 import (
 	"testing"
+	"time"
 
+	"github.com/gnacho/netpulse/server-go/internal/db"
 	"github.com/gnacho/netpulse/server-go/internal/unifi"
 )
 
@@ -54,7 +56,7 @@ func TestUniFiPortMACsFoldsOnlyBareAddressesInRange(t *testing.T) {
 		bare("02:00:00:00:02:03"), // AP base + 5: beyond the default span of 4
 		bare("02:00:00:00:00:00"), // nowhere near
 	}
-	got := uniFiPortMACs(devices, pmInventory())
+	got := uniFiPortMACs(devices, pmInventory(), nil)
 	want := map[string]string{
 		"02:00:00:00:00:F1": pmSwitch,
 		"02:00:00:00:00:F8": pmSwitch,
@@ -71,7 +73,7 @@ func TestUniFiPortMACsFoldsOnlyBareAddressesInRange(t *testing.T) {
 }
 
 func TestUniFiPortMACsWithoutController(t *testing.T) {
-	if got := uniFiPortMACs([]Device{bare("02:00:00:00:00:F1")}, nil); len(got) != 0 {
+	if got := uniFiPortMACs([]Device{bare("02:00:00:00:00:F1")}, nil, nil); len(got) != 0 {
 		t.Fatalf("no inventory folded %v", got)
 	}
 }
@@ -103,25 +105,71 @@ func TestApplyPortMACFold(t *testing.T) {
 	}
 }
 
-// A folded address the registry remembers does not come back as a ghost.
-func TestGhostDevicesSkipsFoldedPortMACs(t *testing.T) {
+// A remembered port address with no name or IP is not a ghost, even when
+// it is not live (its port went down); one with a name or IP is.
+func TestGhostDevicesSkipsUniFiPortMACs(t *testing.T) {
 	d := openLiveTestDB(t)
 	l := &Live{db: d}
-	if _, err := d.Exec("INSERT INTO device_seen (mac, first_seen, last_seen, name) VALUES ('02:00:00:00:00:F1', 1, 2, ''), ('02:00:00:00:00:11', 1, 2, 'laptop-02')"); err != nil {
+	if _, err := d.Exec(`INSERT INTO device_seen (mac, first_seen, last_seen, name, ip) VALUES
+		('02:00:00:00:00:F1', 1, 2, '', ''),
+		('02:00:00:00:00:F2', 1, 2, 'printer-01', ''),
+		('02:00:00:00:00:F3', 1, 2, '', '192.0.2.3')`); err != nil {
 		t.Fatal(err)
 	}
-	l.unifi.folded = map[string]string{"02:00:00:00:00:F1": pmSwitch}
-	for _, g := range l.ghostDevices(nil) {
-		if g.MAC == "02:00:00:00:00:F1" {
-			t.Fatal("a folded port address came back as a ghost")
+	ghosts := func() map[string]bool {
+		out := map[string]bool{}
+		for _, g := range l.ghostDevices(nil) {
+			out[g.MAC] = true
 		}
+		return out
 	}
-	l.unifi.folded = nil
-	found := false
-	for _, g := range l.ghostDevices(nil) {
-		found = found || g.MAC == "02:00:00:00:00:F1"
+	// No controller: every remembered row is a ghost.
+	if g := ghosts(); !g["02:00:00:00:00:F1"] || !g["02:00:00:00:00:F2"] || !g["02:00:00:00:00:F3"] {
+		t.Fatalf("without the controller: %v", g)
 	}
-	if !found {
-		t.Fatal("without the fold the remembered address must be listed again")
+	inv := pmInventory()
+	delete(inv.clients, "02:00:00:00:00:F3")
+	l.unifi.inv, l.unifi.at = inv, time.Now()
+	saveUniFiTestConfig(t, d)
+	g := ghosts()
+	if g["02:00:00:00:00:F1"] {
+		t.Fatal("a bare port address came back as a ghost")
+	}
+	if !g["02:00:00:00:00:F2"] || !g["02:00:00:00:00:F3"] {
+		t.Fatalf("a remembered name or IP must keep the ghost: %v", g)
+	}
+}
+
+// A live device the registry remembers a name or an IP for is not folded:
+// it is a host whose lease has just expired.
+func TestUniFiPortMACsKeepsRememberedHosts(t *testing.T) {
+	devices := []Device{bare("02:00:00:00:00:F1"), bare("02:00:00:00:00:F2"), bare("02:00:00:00:00:F4")}
+	remembered := map[string]seenRow{
+		"02:00:00:00:00:F2": {name: "nas-01"},
+		"02:00:00:00:00:F4": {ip: "192.0.2.4"},
+	}
+	got := uniFiPortMACs(devices, pmInventory(), remembered)
+	if len(got) != 1 || got["02:00:00:00:00:F1"] != pmSwitch {
+		t.Fatalf("folded %v", got)
+	}
+	notify := bare("02:00:00:00:00:F5")
+	notify.NotifyOffline = true
+	lower := bare("02:00:00:00:00:F6")
+	lower.Name = "02:00:00:00:00:f6"
+	got = uniFiPortMACs([]Device{notify, lower}, pmInventory(), nil)
+	if _, ok := got[notify.MAC]; ok {
+		t.Fatal("a device with an offline-alert opt-in was folded")
+	}
+	if _, ok := got[lower.MAC]; !ok {
+		t.Fatal("a MAC-shaped name in another case must still count as no name")
+	}
+}
+
+// saveUniFiTestConfig enables the integration, so the cached inventory a
+// test put in place is served (nothing is fetched while the cache is fresh).
+func saveUniFiTestConfig(t *testing.T, d *db.DB) {
+	t.Helper()
+	if err := unifi.SaveConfig(d.DB, unifi.Config{URL: "https://192.0.2.1:8443", Username: "dummy", Password: "dummy-pass"}); err != nil {
+		t.Fatal(err)
 	}
 }
