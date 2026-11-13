@@ -4525,6 +4525,7 @@ func (l *Live) buildOverview(ctx context.Context) (*Overview, error) {
 		unifiGatewayID = gw.ID
 	}
 	distNodes = l.sealUniFiInfra(devices, distNodes, unifiGatewayID)
+	devices = l.foldUniFiPortMACs(devices)
 	// Supresión topológica (#332): actualizar grafo parent→child.
 	// Todos los no-gateway cuelgan del gateway.
 	l.mu.Lock()
@@ -5065,6 +5066,7 @@ func (l *Live) GetRouterDetail(ctx context.Context, id string) (*RouterDetail, e
 	// Same seal as the other paths, with its own dist nodes so the attach
 	// ids match the ones the overview produces.
 	l.sealUniFiInfra(detDevices, detDists, l.gatewayID())
+	detDevices = l.foldUniFiPortMACs(detDevices)
 	// #954: first/last seen también en los clientes del detalle del router.
 	// #1818: mismo gate de permanencia que el overview.
 	detDevices = l.settleTransient(detDevices, time.Now().UnixMilli())
@@ -5263,6 +5265,7 @@ func (l *Live) attributedDevices() []Device {
 	// each client to a node id, and with nil it would invent new ids that
 	// do not match the overview's.
 	l.sealUniFiInfra(devices, devDists, l.gatewayID())
+	devices = l.foldUniFiPortMACs(devices)
 	// #954 + #1095: first/last seen persistente (device_seen) en el payload
 	// final. La escritura vivía SOLO en buildOverview: si por lo que fuera
 	// esa lista no contenía un cliente (p. ej. flota agent-only), el visto

@@ -433,7 +433,11 @@ type Device struct {
 	LastSeenMs  int64 `json:"lastSeenMs,omitempty"`
 	// AliasMacs: MACs enlazadas a este cliente (#1151, mismo dispositivo con
 	// varias MACs - p. ej. una por SSID). Solo viaja en el canónico.
-	AliasMacs    []string `json:"aliasMacs,omitempty"`
+	AliasMacs []string `json:"aliasMacs,omitempty"`
+	// PortMacs: the per-port addresses of this UniFi switch or AP that the
+	// router learned as if they were clients, folded in here (read-only;
+	// unlike AliasMacs they are not links the user made).
+	PortMacs     []string `json:"portMacs,omitempty"`
 	Traffic24hRx string   `json:"traffic24hRx,omitempty"`
 	Traffic24hTx string   `json:"traffic24hTx,omitempty"`
 	Adguard      *bool    `json:"adguard,omitempty"` // puntero: demo emite true/false explícito; live lo omite (paridad Node)

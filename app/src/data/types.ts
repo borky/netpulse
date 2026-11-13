@@ -284,6 +284,8 @@ export interface Device {
   manufacturer: string
   /** OS its DHCP request matched ("iOS", "Windows", ...), when the router records it. */
   dhcpFingerprint?: string
+  /** Per-port addresses of this UniFi switch or AP, folded in from the client list (read-only). */
+  portMacs?: string[]
   /** name is a label made from the fingerprint, not a real name: the device still counts as unknown. */
   nameInferred?: boolean
   ip: string

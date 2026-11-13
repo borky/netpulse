@@ -442,6 +442,7 @@
     "copyIp": "Copiar IP",
     "detail": {
       "linkedMacs": "MACs enlazadas",
+      "portMacs": "MACs de puerto",
       "dhcpLease": "Concesión DHCP",
       "dhcpFingerprint": "SO (huella DHCP)",
       "firstSeen": "Primera vez vista",
