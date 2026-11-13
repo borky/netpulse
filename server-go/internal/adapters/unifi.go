@@ -336,6 +336,13 @@ func applyUniFiInfra(devices []Device, dists []DistributionNode, inv *unifiInven
 			if c.Band != "" {
 				devices[i].Band = c.Band
 			}
+			// So is the signal. Without it a station behind a UniFi AP had
+			// none - drawn as a cable - or kept one remembered from another
+			// AP long ago. The controller's is live.
+			if c.SignalDbm < 0 {
+				sig := c.SignalDbm
+				devices[i].SignalDbm = &sig
+			}
 		}
 	}
 	return dists
