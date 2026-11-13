@@ -120,10 +120,16 @@ func mergeLinkedDevices(devices []Device, links map[string]string) []Device {
 			// eso es un nombre real. Si su nombre actual es una MAC (fallback
 			// sin hostname) y la alias solo ofrece otra MAC, se conserva la
 			// propia: mejor la MAC del canónico que la de una alias.
-			if canon.Name == "" {
-				canon.Name = d.Name
-			} else if isMACLike(canon.Name) && !isMACLike(d.Name) {
-				canon.Name = d.Name
+			// A label inferred from the fingerprint ranks with a MAC: a real
+			// name replaces it, and it replaces only a MAC.
+			canonNameless := isMACLike(canon.Name) || canon.NameInferred
+			switch {
+			case canon.Name == "":
+				canon.Name, canon.NameInferred = d.Name, d.NameInferred
+			case canonNameless && !isMACLike(d.Name) && !d.NameInferred:
+				canon.Name, canon.NameInferred = d.Name, false
+			case isMACLike(canon.Name) && d.NameInferred:
+				canon.Name, canon.NameInferred = d.Name, true
 			}
 			if canon.Manufacturer == "" {
 				canon.Manufacturer = d.Manufacturer
