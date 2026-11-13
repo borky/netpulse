@@ -173,3 +173,41 @@ func saveUniFiTestConfig(t *testing.T, d *db.DB) {
 		t.Fatal(err)
 	}
 }
+
+// Where two ranges overlap, the nearest base below owns the address.
+func TestUniFiPortOwnerPicksTheNearestBase(t *testing.T) {
+	inv := &unifiInventory{devices: map[string]unifi.Device{
+		"02:00:00:00:00:10": {MAC: "02:00:00:00:00:10", Kind: "ap"}, // span 4: ..11-..14
+		"02:00:00:00:00:12": {MAC: "02:00:00:00:00:12", Kind: "ap"}, // span 4: ..13-..16
+	}}
+	for i := 0; i < 50; i++ {
+		if o, ok := uniFiPortOwner("02:00:00:00:00:13", inv); !ok || o != "02:00:00:00:00:12" {
+			t.Fatalf("owner %q", o)
+		}
+	}
+	if o, _ := uniFiPortOwner("02:00:00:00:00:11", inv); o != "02:00:00:00:00:10" {
+		t.Fatalf("owner %q", o)
+	}
+}
+
+// A remembered address the user set something up for is never hidden.
+func TestGhostDevicesKeepsWhatTheUserSetUp(t *testing.T) {
+	d := openLiveTestDB(t)
+	l := &Live{db: d}
+	if _, err := d.Exec(`INSERT INTO device_seen (mac, first_seen, last_seen, name, ip) VALUES ('02:00:00:00:00:F1', 1, 2, '', '')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO device_overrides (mac, notify_offline, created_at, updated_at) VALUES ('02:00:00:00:00:f1', 1, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	inv := pmInventory()
+	l.unifi.inv, l.unifi.at = inv, time.Now()
+	saveUniFiTestConfig(t, d)
+	found := false
+	for _, g := range l.ghostDevices(nil) {
+		found = found || g.MAC == "02:00:00:00:00:F1"
+	}
+	if !found {
+		t.Fatal("an address with a user override was hidden")
+	}
+}

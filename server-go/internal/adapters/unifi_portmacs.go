@@ -52,9 +52,13 @@ func uniFiPortOwner(mac string, inv *unifiInventory) (string, bool) {
 		if span == 0 {
 			span = defaultPortMACSpan
 		}
-		// The lowest base wins, so the answer never depends on map order.
-		if v > b && v-b <= span && (owner == "" || base < owner) {
-			owner = base
+		// The nearest base below wins: where two ranges overlap, the
+		// address belongs to the block it is closest to. Deterministic,
+		// whatever the map order.
+		if v > b && v-b <= span {
+			if ob, _ := macValue(owner); owner == "" || b > ob {
+				owner = base
+			}
 		}
 	}
 	return owner, owner != ""
@@ -140,11 +144,11 @@ func (l *Live) foldUniFiPortMACs(devices []Device) []Device {
 // a UniFi port address is not listed as an offline ghost. The same rule as
 // the live fold, so a port MAC that left the bridge table (its port went
 // down) does not come back as an unknown device.
-func (l *Live) uniFiGhostIsPortMAC(mac string, r seenRow) bool {
-	if r.name != "" || r.ip != "" {
+func uniFiGhostIsPortMAC(mac string, r seenRow, inv *unifiInventory, userSet map[string]bool) bool {
+	if r.name != "" || r.ip != "" || userSet[mac] {
 		return false
 	}
-	_, ok := uniFiPortOwner(mac, l.unifiInventoryCached())
+	_, ok := uniFiPortOwner(mac, inv)
 	return ok
 }
 
@@ -167,6 +171,34 @@ func applyPortMACFold(devices []Device, folded map[string]string) []Device {
 			sort.Strings(d.PortMacs)
 		}
 		out = append(out, d)
+	}
+	return out
+}
+
+// macsTheUserSetUp: every MAC with a manual override of any kind, on the
+// allowlist, or in a link the user made. Such a MAC is never hidden as a
+// port address: the user said something about it.
+func (l *Live) macsTheUserSetUp(links map[string]string) map[string]bool {
+	out := map[string]bool{}
+	for alias, canonical := range links {
+		out[normSeenMAC(alias)] = true
+		out[normSeenMAC(canonical)] = true
+	}
+	if l.db == nil {
+		return out
+	}
+	for _, q := range []string{"SELECT mac FROM device_overrides", "SELECT mac FROM known_macs"} {
+		rows, err := l.db.Query(q)
+		if err != nil {
+			continue
+		}
+		for rows.Next() {
+			var mac string
+			if rows.Scan(&mac) == nil {
+				out[normSeenMAC(mac)] = true
+			}
+		}
+		rows.Close()
 	}
 	return out
 }
