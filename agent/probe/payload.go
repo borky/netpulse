@@ -328,14 +328,31 @@ type DiscoveryData struct {
 	// and its model. A better name than any mDNS host name, which is often
 	// a UUID or a bare "Android".
 	DeviceByIP map[string]MdnsDevice `json:"deviceByIp,omitempty"`
-	// ServicesByIP: the service types seen at each address, folded into
-	// Services under the host name finally chosen (FoldServicesByIP). Not
-	// sent: Services already carries them.
-	ServicesByIP map[string][]string `json:"-"`
+	// ServicesByIP: the service types seen at each address. The server looks
+	// a device's services up by its IP here: keyed by host name they were
+	// lost whenever another record named the address, and a generic host
+	// name ("Android") is shared by many devices.
+	ServicesByIP map[string][]string `json:"servicesByIp,omitempty"`
 }
 
 // MdnsDevice is a device's self-description from its mDNS TXT records.
 type MdnsDevice struct {
 	Name  string `json:"name,omitempty"`
 	Model string `json:"model,omitempty"`
+	// NamePrio and ModelPrio rank the record each came from (Cast over
+	// AirPlay), so the server merges several routers by the same rule.
+	NamePrio  int `json:"namePrio,omitempty"`
+	ModelPrio int `json:"modelPrio,omitempty"`
+}
+
+// BetterMdnsDevice merges two reports about one address: per field, the
+// higher-ranked value, then the lexically smaller, whatever the order.
+func BetterMdnsDevice(a, b MdnsDevice) MdnsDevice {
+	if b.Name != "" && (a.Name == "" || b.NamePrio > a.NamePrio || (b.NamePrio == a.NamePrio && b.Name < a.Name)) {
+		a.Name, a.NamePrio = b.Name, b.NamePrio
+	}
+	if b.Model != "" && (a.Model == "" || b.ModelPrio > a.ModelPrio || (b.ModelPrio == a.ModelPrio && b.Model < a.Model)) {
+		a.Model, a.ModelPrio = b.Model, b.ModelPrio
+	}
+	return a
 }

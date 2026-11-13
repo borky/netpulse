@@ -106,21 +106,37 @@ func TestParseMdnsBrowseIsStableAndRanked(t *testing.T) {
 	}
 }
 
-// Services announced under one host record stay with the address when
-// another record names it.
-func TestFoldServicesByIP(t *testing.T) {
+// Services are reported by address too, so they stay with the device
+// whichever record ends up naming it. Names carry their rank for the
+// server's merge.
+func TestParseMdnsBrowseServicesByIP(t *testing.T) {
 	raw := `{"_googlecast._tcp": {"Dummy-TV": {"host": "f0e1d2c3-b4a5-9687-7869-5a4b3c2d1e0f.local",
-	          "ipv4": "192.0.2.40", "txt": ["fn=Living room"]}}}`
+	          "ipv4": "192.0.2.40", "txt": ["fn=Living room"]}},
+	        "_airplay._tcp": {"Den": {"host": "apple-tv-dummy.local", "ipv4": "192.0.2.50"}}}`
 	dd := ParseMdnsBrowse([]byte(raw))
-	// The hosts listing names the address "Android", which sorts first.
-	dd.HostByIP["192.0.2.40"] = BetterMdnsName(dd.HostByIP["192.0.2.40"], "Android")
-	dd.FoldServicesByIP()
-	host := dd.HostByIP["192.0.2.40"]
-	if host != "Android" {
-		t.Fatalf("chosen host %q", host)
+	if svcs := dd.ServicesByIP["192.0.2.40"]; len(svcs) != 1 || svcs[0] != "_googlecast._tcp" {
+		t.Fatalf("services by ip: %+v", dd.ServicesByIP)
 	}
-	if svcs := dd.Services[host]; len(svcs) != 1 || svcs[0] != "_googlecast._tcp" {
-		t.Fatalf("services under %q: %+v", host, dd.Services)
+	if got := dd.DeviceByIP["192.0.2.40"]; got.NamePrio != 2 {
+		t.Fatalf("cast name rank: %+v", got)
+	}
+	if got := dd.DeviceByIP["192.0.2.50"]; got.NamePrio != 1 {
+		t.Fatalf("airplay name rank: %+v", got)
+	}
+	// Two routers, in either order: the Cast name, not the smaller string.
+	cast := MdnsDevice{Name: "Living room", NamePrio: 2}
+	air := MdnsDevice{Name: "BRAVIA Dummy", NamePrio: 1}
+	if BetterMdnsDevice(cast, air).Name != "Living room" || BetterMdnsDevice(air, cast).Name != "Living room" {
+		t.Fatal("the merge must keep the Cast name")
+	}
+}
+
+func TestCleanMdnsTextDropsLineSeparators(t *testing.T) {
+	if got := cleanMdnsText("Living\u2028room\u2029"); got != "Livingroom" {
+		t.Fatalf("%q", got)
+	}
+	if h := ParseMdnsHosts([]byte(`{"evil\u202ehost.local":{"ipv4":"192.0.2.9"}}`)); h["192.0.2.9"] != "evilhost" {
+		t.Fatalf("host names are cleaned too: %q", h["192.0.2.9"])
 	}
 }
 

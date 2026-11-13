@@ -370,8 +370,11 @@ func (l *Live) applyDeviceSeen(devices []Device) {
 			// (#1151) el merge puede dejar como nombre la MAC de una alias,
 			// que tampoco es un nombre. Los alias/override reales nunca son
 			// MAC-shaped, así que siguen sin pisarse.
-			if s.name != "" && isMACLike(devices[i].Name) {
+			// A label inferred from the fingerprint ranks with a MAC: the
+			// name this device really had wins over it.
+			if s.name != "" && (isMACLike(devices[i].Name) || devices[i].NameInferred) {
 				devices[i].Name = s.name
+				devices[i].NameInferred = false
 			}
 			if s.name != "" && devices[i].Hostname == "" {
 				devices[i].Hostname = s.name
