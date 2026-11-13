@@ -1,6 +1,9 @@
 package probe
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMdnsNameIsWeak(t *testing.T) {
 	weak := []string{"Android", "android", "", "0123abcd-4567-89ef-0123-456789abcdef", "0123456789abcdef0123", "localhost"}
@@ -158,5 +161,32 @@ func TestParseMdnsBrowseFlatServicesByIP(t *testing.T) {
 	}
 	if s := dd.ServicesByIP["192.0.2.41"]; len(s) != 1 || s[0] != "_spotify-connect._tcp" {
 		t.Fatalf(".41: %+v", s)
+	}
+}
+
+// Without "array": true umdns repeats the "txt" key. The record must still
+// be read (its host, address and services); the TXT keeps what survives.
+func TestParseMdnsBrowseRepeatedTxtKeys(t *testing.T) {
+	raw := `{"_googlecast._tcp": {"Dummy-TV": {
+	  "txt": "md=BRAVIA 4K Dummy",
+	  "txt": "fn=Living room",
+	  "host": "0123abcd-4567-89ef-0123-456789abcdef.local",
+	  "ipv4": "192.0.2.40"}}}`
+	dd := ParseMdnsBrowse([]byte(raw))
+	if dd == nil {
+		t.Fatal("the record was dropped")
+	}
+	if s := dd.ServicesByIP["192.0.2.40"]; len(s) != 1 {
+		t.Fatalf("services: %+v", dd.ServicesByIP)
+	}
+	if got := dd.DeviceByIP["192.0.2.40"]; got.Name != "Living room" {
+		t.Fatalf("last txt entry: %+v", got)
+	}
+}
+
+// The agent asks for the array form first.
+func TestMdnsBrowseAsksForArrays(t *testing.T) {
+	if !strings.HasPrefix(CmdMdnsBrowse, `ubus call umdns browse '{"array":true}'`) {
+		t.Fatalf("CmdMdnsBrowse = %s", CmdMdnsBrowse)
 	}
 }

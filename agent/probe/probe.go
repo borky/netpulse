@@ -275,7 +275,11 @@ const (
 	// CmdMdnsBrowse (#338): mDNS service discovery via umdns (OpenWrt's
 	// lightweight mDNS daemon). Returns JSON with hostname -> services.
 	// Falls back to empty if umdns is not installed.
-	CmdMdnsBrowse = "ubus call umdns browse 2>/dev/null || echo '{}'"
+	// With "array": true, umdns lists a record's TXT entries and addresses
+	// as arrays; without it, it repeats the "txt" key once per entry, which
+	// a JSON decoder keeps only the last of. The plain call stays as the
+	// fallback for a umdns without the argument.
+	CmdMdnsBrowse = `ubus call umdns browse '{"array":true}' 2>/dev/null || ubus call umdns browse 2>/dev/null || echo '{}'`
 	// CmdMdnsHosts (#338): the plain host records umdns has learned, as
 	// "<name>.local" -> {ipv4, ipv6}. browse only lists hosts that advertise
 	// a SERVICE; a device that just announces its name (most laptops and
@@ -2411,7 +2415,7 @@ func parseMdnsService(dd *DiscoveryData, cands map[string]*mdnsCandidate, svcTyp
 	var instances map[string]struct {
 		Host string          `json:"host"`
 		IPv4 json.RawMessage `json:"ipv4"`
-		TXT  []string        `json:"txt"`
+		TXT  json.RawMessage `json:"txt"`
 	}
 	if json.Unmarshal(raw, &instances) != nil {
 		return
@@ -2437,7 +2441,7 @@ func parseMdnsService(dd *DiscoveryData, cands map[string]*mdnsCandidate, svcTyp
 			dd.HostByIP[ip] = BetterMdnsName(dd.HostByIP[ip], host)
 		}
 		txt := map[string]string{}
-		for _, kv := range rec.TXT {
+		for _, kv := range txtEntries(rec.TXT) {
 			if k, v, ok := strings.Cut(kv, "="); ok {
 				txt[strings.ToLower(k)] = v
 			}
@@ -2463,6 +2467,21 @@ func parseMdnsService(dd *DiscoveryData, cands map[string]*mdnsCandidate, svcTyp
 			c.offerModel(cleanMdnsText(txt["am"]), 0)
 		}
 	}
+}
+
+// txtEntries reads a record's TXT field: a list with "array": true, or a
+// single string (all that survives umdns's repeated keys without it). A
+// field of any other shape gives nothing rather than losing the record.
+func txtEntries(raw json.RawMessage) []string {
+	var many []string
+	if json.Unmarshal(raw, &many) == nil {
+		return many
+	}
+	var one string
+	if json.Unmarshal(raw, &one) == nil && one != "" {
+		return []string{one}
+	}
+	return nil
 }
 
 // firstIPv4 reads umdns's ipv4 field, a string or, with "array": true, a list.
