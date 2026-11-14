@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/gnacho/netpulse/server-go/internal/radiusbackup"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -440,5 +441,29 @@ func TestIngestRejectsStaleAndEqualTimestamps(t *testing.T) {
 	}
 	if raw != strconv.FormatInt(now, 10) {
 		t.Fatalf("timestamp persistido: got %q want %d", raw, now)
+	}
+}
+
+// FORK: the quarantine's RADIUS block carries a shared secret. It never
+// stays in the cached push (which is persisted for restarts), and a push
+// over plain HTTP does not reach the backup RADIUS store either.
+func TestIngestStripsTheQuarantineRadiusSecret(t *testing.T) {
+	ts := makeAgentTestServer(t)
+	_, token, _ := createAgentToken(t, ts, "patio")
+	body := strings.Replace(validPayload(), `"fdb":{"macs":{}}`,
+		`"fdb":{"macs":{}},"quarantineRadius":{"secret":"dummy-radius-secret","enforce":true,"approved":["02:00:00:00:00:0a"]}`, 1)
+	res := ingest(t, ts, token, "192.0.2.50", body)
+	if res.StatusCode/100 != 2 {
+		t.Fatalf("ingest: %d", res.StatusCode)
+	}
+	p, ok := ts.agents.Fresh("patio")
+	if !ok {
+		t.Fatal("push not ingested")
+	}
+	if p.Data.QuarantineRadius != nil {
+		t.Fatal("the RADIUS secret stayed in the cached push")
+	}
+	if radiusbackup.Default.Has("patio") {
+		t.Fatal("a push over plain HTTP reached the RADIUS store")
 	}
 }

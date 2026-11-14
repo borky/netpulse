@@ -103,6 +103,9 @@ type PayloadData struct {
 	// Read-only here. nil = this router reports no multi-WAN, which is also
 	// what an older agent sends.
 	MultiWan *MultiWanInfo `json:"multiWan,omitempty"`
+	// QuarantineRadius: the panel's RADIUS decisions for a backup server
+	// (see QuarantineRadiusInfo). Only over pinned HTTPS; nil otherwise.
+	QuarantineRadius *QuarantineRadiusInfo `json:"quarantineRadius,omitempty"`
 }
 
 // MQTTData: exposición propia del equipo a Home Assistant por MQTT (#832).
