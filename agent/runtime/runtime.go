@@ -90,6 +90,12 @@ type Options struct {
 	// it tells anyone.
 	MultiWan func() *probe.MultiWanInfo
 
+	// QuarantineRadius lets an embedder (the NetGrip panel) hand the
+	// server what it needs to answer RADIUS while the panel cannot. It
+	// carries a shared secret, so it is sent only to an HTTPS server with
+	// a pinned key (ServerFP).
+	QuarantineRadius func() *probe.QuarantineRadiusInfo
+
 	// OnStatus recibe el estado en cada cambio (arranque, cada push, parada).
 	// Nunca rompe el bucle: un panic dentro del callback se recupera.
 	OnStatus func(Status)
@@ -317,6 +323,9 @@ func Run(ctx context.Context, opts Options) error {
 		withMeta(payload, opts)
 		withPanel(payload, opts)
 		payload.Data.MultiWan = mw
+		if opts.QuarantineRadius != nil && quarantineRadiusAllowed(opts) {
+			payload.Data.QuarantineRadius = opts.QuarantineRadius()
+		}
 		a.pushOnce(ctx, payload)
 		select {
 		case <-ctx.Done():
@@ -446,4 +455,10 @@ func (o *Options) normalize() {
 	if o.Interval <= 0 {
 		o.Interval = DefaultInterval
 	}
+}
+
+// quarantineRadiusAllowed: the RADIUS secret travels only to a server
+// reached over HTTPS whose key is pinned.
+func quarantineRadiusAllowed(opts Options) bool {
+	return strings.HasPrefix(strings.ToLower(opts.Server), "https://") && opts.ServerFP != ""
 }

@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gnacho/netpulse/server-go/internal/radiusbackup"
 	"io"
 	"log"
 	"net/http"
@@ -322,6 +323,16 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	// FORK: which agents still report over plain HTTP (Settings > HTTPS).
 	s.noteAgentTransport(p.Router, auth.IsSecureRequest(r))
+	// FORK: the quarantine's RADIUS data carries a shared secret. It goes
+	// to the backup RADIUS store (memory only) and only if the push came
+	// over TLS; it is taken out of the payload either way, so the secret
+	// never sits in the cached push, the database or any API answer.
+	if qr := p.Data.QuarantineRadius; qr != nil {
+		p.Data.QuarantineRadius = nil
+		if auth.IsSecureRequest(r) {
+			radiusbackup.Default.Update(p.Router, qr)
+		}
+	}
 	// Fase 18 (#452): persistir scans pasivos de vecinos si el payload trae
 	// datos wireless. Se guardan incluso si el payload no es "fresco" para no
 	// perder la muestra recién recibida.
