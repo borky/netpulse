@@ -103,7 +103,7 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 		inv.clients[c.MAC] = c
 	}
 	inv.unplaced = api.Unplaced
-	inv.stations = unifi.ParseStations(api.RawClients)
+	inv.stations = api.Stations
 	// NETPULSE_UNIFI_TRACE=<mac>[,<mac>]: log the controller's record for
 	// those clients at each read, to see what it says about one device.
 	for _, mac := range strings.Split(os.Getenv("NETPULSE_UNIFI_TRACE"), ",") {

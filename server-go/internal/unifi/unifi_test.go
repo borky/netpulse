@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -135,6 +136,10 @@ func TestInventoryAgainstStandaloneController(t *testing.T) {
 	}
 	if len(devices) != 3 || len(clients) != 3 {
 		t.Fatalf("inventory: %d devices, %d clients", len(devices), len(clients))
+	}
+	// The same decoding fills the unplaced list and the quarantine's view.
+	if !reflect.DeepEqual(c.Unplaced, UnplacedClients([]byte(clientsJSON))) || !reflect.DeepEqual(c.Stations, ParseStations([]byte(clientsJSON))) || len(c.Stations) == 0 {
+		t.Fatalf("unplaced %v, stations %v", c.Unplaced, c.Stations)
 	}
 }
 

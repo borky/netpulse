@@ -110,6 +110,10 @@ type ClientAPI struct {
 	// RawClients: the station list as the controller sent it, kept from the
 	// last Inventory for NETPULSE_UNIFI_TRACE.
 	RawClients []byte
+	// Stations: after Inventory, how each client is connected, for the
+	// device quarantine (see ParseStations), from the same single decoding
+	// of the station list as the clients.
+	Stations map[string]Station
 }
 
 // NewClient builds a client; nothing happens until a call is made.
@@ -204,11 +208,15 @@ func (c *ClientAPI) Inventory(ctx context.Context) ([]Device, []Client, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("stat/sta: %w", err)
 	}
-	clients, err := ParseClients(rawClients)
-	if err != nil {
+	// One decoding serves the placement, the unplaced list and the
+	// quarantine's stations (the list can be large).
+	var recs []rawStationRec
+	if err := json.Unmarshal(rawClients, &recs); err != nil {
 		return nil, nil, fmt.Errorf("stat/sta: %w", err)
 	}
-	c.Unplaced = UnplacedClients(rawClients)
+	clients := clientsFrom(recs)
+	c.Unplaced = unplacedFrom(recs)
+	c.Stations = stationsFrom(recs)
 	c.RawClients = rawClients
 	return devices, clients, nil
 }
@@ -284,12 +292,26 @@ func ParseDevices(raw []byte) ([]Device, error) {
 	return out, nil
 }
 
+// rawStationRec is one station record with every field the parsers below
+// read. The extra Wi-Fi fields are raw, so they never make a record fail to
+// decode: the list decodes exactly when it decodes as []rawClient.
+type rawStationRec struct {
+	rawClient
+	RadioProto json.RawMessage `json:"radio_proto"`
+	NSS        json.RawMessage `json:"nss"`
+	IsMLO      json.RawMessage `json:"is_mlo"`
+}
+
 // ParseClients normalises the station list, keeping only where each one sits.
 func ParseClients(raw []byte) ([]Client, error) {
-	var in []rawClient
+	var in []rawStationRec
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return nil, err
 	}
+	return clientsFrom(in), nil
+}
+
+func clientsFrom(in []rawStationRec) []Client {
 	out := make([]Client, 0, len(in))
 	for _, s := range in {
 		if s.MAC == "" {
@@ -314,7 +336,7 @@ func ParseClients(raw []byte) ([]Client, error) {
 		}
 		out = append(out, c)
 	}
-	return out, nil
+	return out
 }
 
 // UnplacedClients lists the stations ParseClients drops, by upper-case MAC,
@@ -322,10 +344,14 @@ func ParseClients(raw []byte) ([]Client, error) {
 // as wired (its MAC is only on the router's bridge port), and nothing said
 // so before.
 func UnplacedClients(raw []byte) map[string]string {
-	var in []rawClient
+	var in []rawStationRec
 	if json.Unmarshal(raw, &in) != nil {
 		return nil
 	}
+	return unplacedFrom(in)
+}
+
+func unplacedFrom(in []rawStationRec) map[string]string {
 	out := map[string]string{}
 	for _, s := range in {
 		mac := strings.ToUpper(s.MAC)
@@ -401,8 +427,43 @@ type rawStation struct {
 	IsMLO      json.RawMessage `json:"is_mlo"`
 }
 
+// stationsFrom: the quarantine's view of an already decoded list.
+func stationsFrom(in []rawStationRec) map[string]Station {
+	out := make(map[string]Station, len(in))
+	for _, r := range in {
+		if st, ok := stationOf(r.MAC, r.IsWired, r.ApMAC, r.Radio, r.RadioProto, r.NSS, r.IsMLO); ok {
+			out[st.MAC] = st
+		}
+	}
+	return out
+}
+
+// stationOf builds one station; ok false when there is nothing to say.
+func stationOf(mac string, wired bool, apMAC, radio string, proto, nss, mlo json.RawMessage) (Station, bool) {
+	if mac == "" {
+		return Station{}, false
+	}
+	st := Station{MAC: strings.ToUpper(mac), Wired: wired}
+	if !st.Wired {
+		if apMAC == "" {
+			return Station{}, false // neither wired nor on an access point: nothing to say
+		}
+		st.APMAC = strings.ToUpper(apMAC)
+		st.Band = stationBand(radio)
+		var p string
+		if json.Unmarshal(proto, &p) == nil {
+			st.Proto = cleanProto(p)
+		}
+		if n := looseInt(nss); n > 0 && n <= 16 {
+			st.NSS = n
+		}
+		st.MLO = looseBool(mlo)
+	}
+	return st, true
+}
+
 // ParseStations reads the station list for the quarantine, by upper-case
-// MAC. A record it cannot read is skipped, not fatal.
+// MAC, record by record: one it cannot read is skipped, not fatal.
 func ParseStations(raw []byte) map[string]Station {
 	var in []json.RawMessage
 	if json.Unmarshal(raw, &in) != nil {
@@ -411,23 +472,16 @@ func ParseStations(raw []byte) map[string]Station {
 	out := make(map[string]Station, len(in))
 	for _, r := range in {
 		var s rawStation
-		if json.Unmarshal(r, &s) != nil || s.MAC == "" {
+		if json.Unmarshal(r, &s) != nil {
 			continue
 		}
-		st := Station{MAC: strings.ToUpper(s.MAC), Wired: looseBool(s.IsWired)}
-		if !st.Wired {
-			if s.ApMAC == "" {
-				continue // neither wired nor on an access point: nothing to say
-			}
-			st.APMAC = strings.ToUpper(s.ApMAC)
-			st.Band = stationBand(s.Radio)
-			st.Proto = cleanProto(s.RadioProto)
-			if n := looseInt(s.NSS); n > 0 && n <= 16 {
-				st.NSS = n
-			}
-			st.MLO = looseBool(s.IsMLO)
+		var p json.RawMessage
+		if s.RadioProto != "" {
+			p, _ = json.Marshal(s.RadioProto)
 		}
-		out[st.MAC] = st
+		if st, ok := stationOf(s.MAC, looseBool(s.IsWired), s.ApMAC, s.Radio, p, s.NSS, s.IsMLO); ok {
+			out[st.MAC] = st
+		}
 	}
 	return out
 }
