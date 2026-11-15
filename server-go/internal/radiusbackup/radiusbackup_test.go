@@ -63,10 +63,15 @@ func TestBackupAnswersLikeThePanel(t *testing.T) {
 	if c := code(t, s.Handle(req), req); c != accessReject {
 		t.Fatalf("unknown: %d", c)
 	}
-	// A pause accepts everyone; the quarantine off too.
-	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true, PauseUntil: now.Add(time.Minute).Unix(), PauseKind: "learn"})
+	// "Pause protection" accepts everyone; a learning pause does not
+	// (only the panel can learn); the quarantine off accepts everyone.
+	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true, PauseUntil: now.Add(time.Minute).Unix(), PauseKind: "off"})
 	if c := code(t, s.Handle(req), req); c != accessAccept {
-		t.Fatalf("during a pause: %d", c)
+		t.Fatalf("during a protection pause: %d", c)
+	}
+	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true, PauseUntil: now.Add(time.Minute).Unix(), PauseKind: "learn"})
+	if c := code(t, s.Handle(req), req); c != accessReject {
+		t.Fatalf("during a learning pause: %d", c)
 	}
 	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: false})
 	if c := code(t, s.Handle(req), req); c != accessAccept {
@@ -106,4 +111,41 @@ func FuzzParse(f *testing.F) {
 			_ = verify(p, []byte("x"))
 		}
 	})
+}
+
+func TestBackupForgetsDisabledStaleAndAmbiguous(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	s := store(now)
+	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true, Approved: []string{"02:00:00:00:00:0a"}})
+	s.Update("gateway", &probe.QuarantineRadiusInfo{Disabled: true})
+	if s.Has("gateway") {
+		t.Fatal("kept a router whose RADIUS layer was turned off")
+	}
+	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true, Approved: []string{"02:00:00:00:00:0a"}})
+	s.now = func() time.Time { return now.Add(maxAge + time.Hour) }
+	if s.Handle(request(t, 1, "02-00-00-00-00-0A", secret)) != nil || s.Has("gateway") {
+		t.Fatal("answered from data a day old")
+	}
+	s.now = func() time.Time { return now }
+	s.Update("a", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true})
+	s.Update("b", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: false})
+	if s.Handle(request(t, 2, "02-00-00-00-00-0B", secret)) != nil {
+		t.Fatal("answered a request two routers' secret signs")
+	}
+}
+
+func TestBackupRefusesCredentialLogins(t *testing.T) {
+	s := store(time.Now())
+	s.Update("gateway", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: false})
+	req := request(t, 1, "02-00-00-00-00-0A", secret)
+	// add an EAP-Message and re-sign
+	body := append(append([]byte(nil), req[:len(req)-18]...), attrEAPMessage, 3, 1, attrMessageAuth, 18)
+	body = append(body, make([]byte, 16)...)
+	binary.BigEndian.PutUint16(body[2:4], uint16(len(body)))
+	m := hmac.New(md5.New, []byte(secret))
+	m.Write(body)
+	copy(body[len(body)-16:], m.Sum(nil))
+	if c := code(t, s.Handle(body), body); c != accessReject {
+		t.Fatalf("an EAP login was answered %d", c)
+	}
 }

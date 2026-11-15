@@ -36,19 +36,27 @@ const (
 	accessReject  = 3
 
 	attrUserName       = 1
+	attrCHAPPassword   = 3
 	attrCallingStation = 31
+	attrProxyState     = 33
 	attrMessageAuth    = 80
+	attrEAPMessage     = 79
+
+	// maxAge: data not refreshed for this long is forgotten (a router that
+	// stopped pushing, or was removed).
+	maxAge = 24 * time.Hour
 
 	headerLen = 20
 	maxLen    = 4096
 )
 
 type router struct {
-	secret   []byte
-	enforce  bool
-	approved map[string]bool
-	pauseTil time.Time
-	at       time.Time
+	secret    []byte
+	enforce   bool
+	approved  map[string]bool
+	pauseTil  time.Time
+	pauseKind string
+	at        time.Time
 }
 
 // Store holds each router's latest RADIUS data.
@@ -66,6 +74,12 @@ var Default = &Store{routers: map[string]*router{}, addr: os.Getenv("NETPULSE_RA
 // Update records a router's data. It must be called only for a push that
 // arrived over TLS (the caller checks); the listener starts on first use.
 func (s *Store) Update(slug string, info *probe.QuarantineRadiusInfo) {
+	if info != nil && info.Disabled {
+		s.mu.Lock()
+		delete(s.routers, slug)
+		s.mu.Unlock()
+		return
+	}
 	if info == nil || info.Secret == "" {
 		return
 	}
@@ -76,7 +90,7 @@ func (s *Store) Update(slug string, info *probe.QuarantineRadiusInfo) {
 		}
 	}
 	if info.PauseUntil > 0 && (info.PauseKind == "learn" || info.PauseKind == "off") {
-		r.pauseTil = time.Unix(info.PauseUntil, 0)
+		r.pauseTil, r.pauseKind = time.Unix(info.PauseUntil, 0), info.PauseKind
 	}
 	s.mu.Lock()
 	s.routers[slug] = r
@@ -134,17 +148,37 @@ func (s *Store) Handle(b []byte) []byte {
 		return nil
 	}
 	s.mu.Lock()
+	now := s.now()
 	var r *router
-	for _, cand := range s.routers {
+	matches := 0
+	for slug, cand := range s.routers {
+		if now.Sub(cand.at) > maxAge {
+			delete(s.routers, slug)
+			continue
+		}
 		if verify(p, cand.secret) {
 			r = cand
-			break
+			matches++
 		}
 	}
-	now := s.now()
 	s.mu.Unlock()
 	if r == nil {
 		return nil // no router's secret signs it
+	}
+	if matches > 1 {
+		// Two routers share a secret: whose list applies cannot be told.
+		log.Printf("[netpulse] radius backup: a request matches several routers' secret; dropped")
+		return nil
+	}
+	var proxy [][]byte
+	for _, a := range p.attrs {
+		if a[0][0] == attrProxyState {
+			proxy = append(proxy, a[1])
+		}
+		// MAC authentication only: a credential login is not ours.
+		if a[0][0] == attrEAPMessage || a[0][0] == attrCHAPPassword {
+			return respond(accessReject, p, r.secret, proxy)
+		}
 	}
 	mac := ""
 	if v := p.attr(attrCallingStation); v != nil {
@@ -159,13 +193,15 @@ func (s *Store) Handle(b []byte) []byte {
 	if mac != "" && decide(r, mac, now) {
 		code = accessAccept
 	}
-	return respond(code, p, r.secret)
+	return respond(code, p, r.secret, proxy)
 }
 
-// decide mirrors the panel: off accepts all, approved MACs and any device
-// during a pause are accepted, the rest refused.
+// decide mirrors the panel where it can: off accepts all, approved MACs
+// are accepted, a "pause protection" accepts everyone. A learning pause
+// refuses unknown devices here: only the panel can learn (and knows who
+// was already waiting).
 func decide(r *router, mac string, now time.Time) bool {
-	return !r.enforce || r.approved[mac] || now.Before(r.pauseTil)
+	return !r.enforce || r.approved[mac] || (r.pauseKind == "off" && now.Before(r.pauseTil))
 }
 
 type packet struct {
@@ -239,12 +275,22 @@ func verify(p *packet, secret []byte) bool {
 
 // respond builds Accept/Reject: Message-Authenticator first, then the
 // Response Authenticator.
-func respond(code byte, req *packet, secret []byte) []byte {
-	b := make([]byte, headerLen+18)
+func respond(code byte, req *packet, secret []byte, proxy [][]byte) []byte {
+	n := headerLen + 18
+	for _, v := range proxy {
+		n += 2 + len(v)
+	}
+	b := make([]byte, n)
 	b[0], b[1] = code, req.id
 	binary.BigEndian.PutUint16(b[2:4], uint16(len(b)))
 	copy(b[4:20], req.auth[:])
 	b[20], b[21] = attrMessageAuth, 18
+	i := headerLen + 18
+	for _, v := range proxy { // echoed unchanged (RFC 2865 5.33)
+		b[i], b[i+1] = attrProxyState, byte(2+len(v))
+		copy(b[i+2:], v)
+		i += 2 + len(v)
+	}
 	m := hmac.New(md5.New, secret)
 	m.Write(b)
 	copy(b[22:38], m.Sum(nil))

@@ -275,6 +275,12 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_payload", "JSON inválido")
 		return
 	}
+	// FORK: the quarantine's RADIUS data carries a shared secret: out of
+	// the payload before anything else sees it (the cached push is
+	// persisted for restarts), into the backup RADIUS store (memory only)
+	// once the push is accepted, and only if it came over TLS.
+	radiusData := p.Data.QuarantineRadius
+	p.Data.QuarantineRadius = nil
 	if !agentSlugRe.MatchString(p.Router) || p.Ts <= 0 {
 		writeError(w, http.StatusBadRequest, "invalid_payload",
 			`Se esperaba { "router": "<slug>", "ts": <unix>, "data": {...} }`)
@@ -323,16 +329,10 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	// FORK: which agents still report over plain HTTP (Settings > HTTPS).
 	s.noteAgentTransport(p.Router, auth.IsSecureRequest(r))
-	// FORK: the quarantine's RADIUS data carries a shared secret. It goes
-	// to the backup RADIUS store (memory only) and only if the push came
-	// over TLS; it is taken out of the payload either way, so the secret
-	// never sits in the cached push, the database or any API answer.
-	if qr := p.Data.QuarantineRadius; qr != nil {
-		p.Data.QuarantineRadius = nil
-		if auth.IsSecureRequest(r) {
-			radiusbackup.Default.Update(p.Router, qr)
-		}
+	if radiusData != nil && auth.IsSecureRequest(r) {
+		radiusbackup.Default.Update(p.Router, radiusData)
 	}
+
 	// Fase 18 (#452): persistir scans pasivos de vecinos si el payload trae
 	// datos wireless. Se guardan incluso si el payload no es "fresco" para no
 	// perder la muestra recién recibida.
