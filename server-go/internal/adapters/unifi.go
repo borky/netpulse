@@ -19,8 +19,10 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/gnacho/netpulse/agent/probe"
 	"github.com/gnacho/netpulse/server-go/internal/unifi"
 )
 
@@ -36,6 +38,8 @@ type unifiInventory struct {
 	clients map[string]unifi.Client
 	// unplaced: stations the controller listed without a place, by MAC.
 	unplaced map[string]string
+	// stations: how each client is connected, for the device quarantine.
+	stations map[string]unifi.Station
 }
 
 type unifiCache struct {
@@ -46,6 +50,15 @@ type unifiCache struct {
 	// logged: the unplaced-client reason last logged per MAC, so each
 	// client's reason is logged once, and again only when it changes.
 	logged map[string]string
+	// latest: the last good inventory and when it was read, readable
+	// without mu (which is held across a controller call): the push
+	// handler must never wait for the controller.
+	latest atomic.Pointer[unifiRead]
+}
+
+type unifiRead struct {
+	inv *unifiInventory
+	at  time.Time
 }
 
 // unifiInventoryCached polls the controller at most once per TTL. A failure
@@ -90,6 +103,7 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 		inv.clients[c.MAC] = c
 	}
 	inv.unplaced = api.Unplaced
+	inv.stations = unifi.ParseStations(api.RawClients)
 	// NETPULSE_UNIFI_TRACE=<mac>[,<mac>]: log the controller's record for
 	// those clients at each read, to see what it says about one device.
 	for _, mac := range strings.Split(os.Getenv("NETPULSE_UNIFI_TRACE"), ",") {
@@ -102,7 +116,61 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 		}
 	}
 	l.unifi.inv, l.unifi.at = inv, time.Now()
+	l.unifi.latest.Store(&unifiRead{inv: inv, at: l.unifi.at})
 	return inv
+}
+
+// quarantineStationsMaxAge: an inventory older than this says nothing about
+// how a device is connected now (the poller reads it every minute).
+const quarantineStationsMaxAge = 5 * time.Minute
+
+// QuarantineStations returns what the controller said, at its last read,
+// about the devices macs names that wanted(mac) accepts, for the copied-MAC
+// detection of the router's panel. nil when there is no recent read. It
+// never calls the controller.
+func (l *Live) QuarantineStations(macs []string, wanted func(mac string) bool) []probe.QuarantineStation {
+	if l == nil {
+		return nil
+	}
+	return quarantineStations(l.unifi.latest.Load(), time.Now(), macs, wanted)
+}
+
+func quarantineStations(r *unifiRead, now time.Time, macs []string, wanted func(string) bool) []probe.QuarantineStation {
+	if r == nil || r.inv == nil || now.Sub(r.at) > quarantineStationsMaxAge {
+		return nil
+	}
+	out := []probe.QuarantineStation{}
+	seen := map[string]bool{}
+	for _, m := range macs {
+		key := strings.ToUpper(strings.TrimSpace(m))
+		st, ok := r.inv.stations[key]
+		if !ok || seen[key] || !wanted(m) {
+			continue
+		}
+		seen[key] = true
+		q := probe.QuarantineStation{MAC: strings.ToLower(key), Wired: st.Wired}
+		if !st.Wired {
+			q.APModel = cleanModel(r.inv.devices[st.APMAC].Model)
+			q.Band, q.Proto, q.NSS, q.MLO = st.Band, st.Proto, st.NSS, st.MLO
+		}
+		out = append(out, q)
+	}
+	return out
+}
+
+// cleanModel keeps a model code ("U7PG2", "U7-Pro") short and plain: it ends
+// up in a router's notices.
+func cleanModel(m string) string {
+	var b strings.Builder
+	for _, c := range m {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.' {
+			b.WriteRune(c)
+		}
+		if b.Len() >= 24 {
+			break
+		}
+	}
+	return b.String()
 }
 
 // gatewayID: the id of the router marked as gateway, or "" when there is

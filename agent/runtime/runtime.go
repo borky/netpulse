@@ -8,6 +8,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -96,6 +97,17 @@ type Options struct {
 	// a pinned key (ServerFP).
 	QuarantineRadius func() *probe.QuarantineRadiusInfo
 
+	// Quarantine lets an embedder (the NetGrip panel) report each device's
+	// quarantine state. Like QuarantineRadius it goes only to an HTTPS
+	// server with a pinned key, and only with the full polls.
+	Quarantine func() *probe.QuarantineInfo
+
+	// OnQuarantineStations receives what the server's UniFi controller says
+	// about the devices the last Quarantine report listed (see
+	// probe.QuarantineStation). Called only for replies from an HTTPS
+	// server with a pinned key, and only when the reply carries stations.
+	OnQuarantineStations func([]probe.QuarantineStation)
+
 	// OnStatus recibe el estado en cada cambio (arranque, cada push, parada).
 	// Nunca rompe el bucle: un panic dentro del callback se recupera.
 	OnStatus func(Status)
@@ -164,6 +176,9 @@ func Run(ctx context.Context, opts Options) error {
 	client := push.New(opts.Server, opts.Token, &http.Client{Timeout: 10 * time.Second, Transport: transport})
 	log := opts.logger()
 	client.SetLogger(func(format string, args ...any) { log.Debug("[netpulse-agent] " + fmt.Sprintf(format, args)) })
+	if opts.OnQuarantineStations != nil && quarantineRadiusAllowed(opts) {
+		client.SetOnReply(func(body []byte) { handleIngestReply(opts, body) })
+	}
 
 	// lastMultiWan is read by the prober while it builds the WAN section, so
 	// the address reported belongs to the connection the policy is using.
@@ -326,6 +341,9 @@ func Run(ctx context.Context, opts Options) error {
 		if opts.QuarantineRadius != nil && quarantineRadiusAllowed(opts) {
 			payload.Data.QuarantineRadius = opts.QuarantineRadius()
 		}
+		if opts.Quarantine != nil && quarantineRadiusAllowed(opts) {
+			payload.Data.Quarantine = opts.Quarantine()
+		}
 		a.pushOnce(ctx, payload)
 		select {
 		case <-ctx.Done():
@@ -461,4 +479,17 @@ func (o *Options) normalize() {
 // reached over HTTPS whose key is pinned.
 func quarantineRadiusAllowed(opts Options) bool {
 	return strings.HasPrefix(strings.ToLower(opts.Server), "https://") && opts.ServerFP != ""
+}
+
+// handleIngestReply hands the stations in a push reply to the embedder. A
+// reply without them (an older server, no UniFi controller, a push that
+// carried no quarantine report) says nothing and is ignored; a panic in the
+// callback never reaches the push loop.
+func handleIngestReply(opts Options, body []byte) {
+	var r probe.IngestReply
+	if len(body) == 0 || json.Unmarshal(body, &r) != nil || r.Stations == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	opts.OnQuarantineStations(r.Stations)
 }

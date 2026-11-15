@@ -433,6 +433,7 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/routers", s.handleRouters)
 	mux.HandleFunc("GET /api/routers/{id}", s.handleRouterDetail)
 	mux.HandleFunc("GET /api/devices", s.handleDevices)
+	mux.HandleFunc("GET /api/quarantine", s.handleQuarantine)
 	mux.Handle("PUT /api/devices/{mac}/override", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceOverridePut)))
 	mux.Handle("GET /api/devices/{mac}/override", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceOverrideGet)))
 	mux.Handle("PUT /api/devices/{mac}/ban", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceBanPut)))

@@ -200,3 +200,37 @@ func TestPushErrorNo2xx(t *testing.T) {
 		t.Fatalf("payload debería quedar buffered: %d", c.Buffered())
 	}
 }
+
+// The body of an accepted push reaches the reply hook; a refused push's
+// does not, and an oversized one is dropped without failing the push.
+func TestPushHandsTheReplyOver(t *testing.T) {
+	status, body := http.StatusAccepted, `{"ok":true,"stations":[]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok", srv.Client())
+	var got []string
+	c.SetOnReply(func(b []byte) { got = append(got, string(b)) })
+	if err := c.Push(context.Background(), mkPayload(1)); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if len(got) != 1 || got[0] != body {
+		t.Fatalf("reply: %q", got)
+	}
+	status = http.StatusUnauthorized
+	_ = c.Push(context.Background(), mkPayload(2))
+	if len(got) != 1 {
+		t.Fatalf("a refused push's body was handed over: %q", got)
+	}
+	status, body = http.StatusAccepted, string(make([]byte, replyCap+1))
+	c2 := New(srv.URL, "tok", srv.Client())
+	c2.SetOnReply(func(b []byte) { got = append(got, "big") })
+	if err := c2.Push(context.Background(), mkPayload(3)); err != nil {
+		t.Fatalf("an oversized reply failed the push: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatal("an oversized reply was handed over")
+	}
+}

@@ -44,6 +44,8 @@ type Client struct {
 	maxBackoff time.Duration
 	bufCap     int
 	logf       func(string, ...any)
+	// onReply, if set, receives the body of each accepted push.
+	onReply func([]byte)
 
 	mu      sync.Mutex
 	backoff time.Duration
@@ -76,6 +78,15 @@ func (c *Client) SetBufferCap(n int) { c.bufCap = n }
 
 // SetLogger enchufa el log (stderr en producción).
 func (c *Client) SetLogger(f func(string, ...any)) { c.logf = f }
+
+// replyCap bounds the reply body read from the server.
+const replyCap = 1 << 20
+
+// SetOnReply hands the body of every accepted push (2xx, at most replyCap
+// bytes; a longer one is not handed over) to f. Set it before the first push.
+// f runs on the pushing goroutine, sometimes with the client's lock held
+// (draining the buffer): it must be quick and must never call the client.
+func (c *Client) SetOnReply(f func([]byte)) { c.onReply = f }
 
 // Dropped: payloads descartados por buffer lleno (drop-oldest).
 func (c *Client) Dropped() uint64 {
@@ -233,9 +244,18 @@ func (c *Client) post(ctx context.Context, p *probe.Payload) error {
 		return err
 	}
 	defer res.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<16))
 	if res.StatusCode < 200 || res.StatusCode > 299 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<16))
 		return fmt.Errorf("ingest HTTP %d", res.StatusCode)
+	}
+	if c.onReply == nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<16))
+		return nil
+	}
+	// The push is accepted whatever the body holds: a reply that cannot be
+	// read is only not handed over.
+	if reply, err := io.ReadAll(io.LimitReader(res.Body, replyCap+1)); err == nil && len(reply) <= replyCap {
+		c.onReply(reply)
 	}
 	return nil
 }

@@ -9,6 +9,8 @@ import { CountUp } from '@/components/CountUp'
 import { EmptyState } from '@/components/EmptyState'
 import { SegmentedControl } from '@/components/SegmentedControl'
 import { StatusPill } from '@/components/StatusPill'
+import { quarantineFor, useQuarantine } from '@/hooks/useQuarantine'
+import { findRouterFor } from '@/lib/agentMatch'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -937,6 +939,7 @@ function DeviceDetail({
       {device.dhcpFingerprint && (
         <DetailItem label={t('devices.detail.dhcpFingerprint')}>{device.dhcpFingerprint}</DetailItem>
       )}
+      <QuarantineItem device={device} />
       {hasAdGuard && (
         <div className="min-w-0">
           <div className="text-label uppercase text-text-muted">AdGuard</div>
@@ -1037,6 +1040,61 @@ function DeviceTile({ device, size = 'md' }: { device: ClientDevice; size?: 'md'
         </span>
       )}
     </div>
+  )
+}
+
+/** The router's quarantine says this device waits for approval, or its
+ *  copied-MAC detection reports it. Approved devices, the normal case, get
+ *  no pill. */
+function QuarantinePill({ device }: { device: ClientDevice }) {
+  const { t } = useTranslation()
+  const q = device.quarantine
+  if (q?.report) {
+    return (
+      <span title={t('devices.quarantine.reportTip')}>
+        <StatusPill tone={q.report === 'alert' ? 'danger' : 'warn'} label={t(`devices.quarantine.${q.report}`)} />
+      </span>
+    )
+  }
+  if (q?.state === 'waiting') {
+    return (
+      <span title={t('devices.quarantine.waitingTip')}>
+        <StatusPill tone="warn" label={t('devices.quarantine.waiting')} />
+      </span>
+    )
+  }
+  return null
+}
+
+/** The quarantine state in the detail, with a link to the panel that
+ *  decides: NetPulse shows it, the router's panel approves. The link names
+ *  the address the router listed (it may be one of the linked ones). */
+function QuarantineItem({ device }: { device: ClientDevice }) {
+  const { t } = useTranslation()
+  const { routers, agents } = useNetPulse()
+  const q = device.quarantine
+  if (!q) return null
+  const agent = agents.find((a) => a.slug === q.router)
+  const router = agent ? findRouterFor(routers, agent) : undefined
+  const href =
+    router?.ip && agent?.kind === 'netgrip'
+      ? `${agent.panelTls ? 'https' : 'http'}://${router.ip}:${agent.panelPort || 8090}/#/quarantine?mac=${encodeURIComponent(q.mac)}`
+      : ''
+  return (
+    <DetailItem label={t('devices.quarantine.label')}>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        {q.report ? (
+          <QuarantinePill device={device} />
+        ) : (
+          <StatusPill tone={q.state === 'waiting' ? 'warn' : 'ok'} label={t(`devices.quarantine.${q.state}`)} />
+        )}
+        {href && (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="text-caption text-accent hover:underline">
+            {t('devices.quarantine.open')}
+          </a>
+        )}
+      </span>
+    </DetailItem>
   )
 }
 
@@ -1250,6 +1308,7 @@ function ListRow({
                 <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
               </button>
               {device.isNew && <NewPill />}
+              <QuarantinePill device={device} />
               {infra && <InfraBadge info={infra} />}
               <TypeBadge type={device.type} className="lg:hidden" />
               {/* #1208: sin chip OFFLINE - el gris del texto y el filtro ya distinguen, y el chip empujaba el texto en pantallas pequeñas */}
@@ -1431,6 +1490,7 @@ function GridCard({
             </button>
             {/* #1208: sin chip OFFLINE - el gris del texto y el filtro ya distinguen */}
             {device.online && device.isNew ? <NewPill /> : null}
+            <QuarantinePill device={device} />
           </div>
         </div>
         <div className="mt-3 flex items-center gap-2">
@@ -1527,6 +1587,7 @@ export default function Devices() {
   // del dataset reconciliado; en live solo fusiona metadatos conocidos sobre
   // la API. D6: los equipos de infraestructura (host hipervisor, sus CTs y
   // switches gestionados con LLDP) se reclasifican al grupo de filtro 'infra'.
+  const quarantine = useQuarantine(!isDemo)
   const { allDevices, infraById } = useMemo(() => {
     const list = buildClientDevices(devices, isDemo).map((d) => {
       const ov = isDemo ? deviceOverrides[d.id] : undefined
@@ -1540,6 +1601,7 @@ export default function Devices() {
         nameOverride: ov?.nameOverride || d.nameOverride,
         typeOverride: ov?.typeOverride || d.typeOverride,
         notifyOffline: ov?.notifyOffline ?? d.notifyOffline,
+        quarantine: quarantineFor(quarantine, d.mac, d.aliasMacs),
       }
     })
     const hosts = new Set(
@@ -1565,7 +1627,7 @@ export default function Devices() {
     }
     if (infra.size === 0) return { allDevices: list, infraById: infra }
     return { allDevices: list.map((d) => (infra.has(d.id) ? { ...d, group: 'infra' as const } : d)), infraById: infra }
-  }, [devices, isDemo, distributionNodes, deviceOverrides])
+  }, [devices, isDemo, distributionNodes, deviceOverrides, quarantine])
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')

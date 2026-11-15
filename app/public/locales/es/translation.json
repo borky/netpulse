@@ -610,6 +610,16 @@
       "unpinHint": "Dejar de restaurar este conjunto al abrir clientes",
       "pinned": "Filtros fijados como defecto",
       "unpinned": "Filtros sin fijar"
+    },
+    "quarantine": {
+      "waiting": "Esperando aprobación",
+      "approved": "Aprobado",
+      "notice": "Posible MAC copiada",
+      "alert": "Posible MAC copiada",
+      "label": "Cuarentena",
+      "open": "Abrir en NetGrip",
+      "waitingTip": "No aprobado en la cuarentena del router: como mucho tiene internet hasta que lo apruebes en NetGrip.",
+      "reportTip": "La detección de MAC copiadas del router informa de este dispositivo. Revisa las pruebas en NetGrip."
     }
   },
   "home": {
