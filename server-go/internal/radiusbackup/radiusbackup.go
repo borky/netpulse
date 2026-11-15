@@ -45,6 +45,9 @@ const (
 	// maxAge: data not refreshed for this long is forgotten (a router that
 	// stopped pushing, or was removed).
 	maxAge = 24 * time.Hour
+	// fresh: two routers both updated this recently and sharing a secret
+	// cannot be told apart; otherwise the newest one answers.
+	fresh = 10 * time.Minute
 
 	headerLen = 20
 	maxLen    = 4096
@@ -61,11 +64,12 @@ type router struct {
 
 // Store holds each router's latest RADIUS data.
 type Store struct {
-	mu      sync.Mutex
-	routers map[string]*router
-	started bool
-	addr    string
-	now     func() time.Time
+	mu        sync.Mutex
+	lastClash time.Time
+	routers   map[string]*router
+	started   bool
+	addr      string
+	now       func() time.Time
 }
 
 // Default is the server-wide store the push handler feeds.
@@ -150,35 +154,51 @@ func (s *Store) Handle(b []byte) []byte {
 	s.mu.Lock()
 	now := s.now()
 	var r *router
-	matches := 0
+	freshMatches := 0
 	for slug, cand := range s.routers {
 		if now.Sub(cand.at) > maxAge {
 			delete(s.routers, slug)
 			continue
 		}
-		if verify(p, cand.secret) {
-			r = cand
-			matches++
+		if !verify(p, cand.secret) {
+			continue
 		}
+		if now.Sub(cand.at) <= fresh {
+			freshMatches++
+		}
+		if r == nil || cand.at.After(r.at) {
+			r = cand // the newest data answers (a renamed router's old entry ages out)
+		}
+	}
+	clash := freshMatches > 1
+	logClash := clash && now.Sub(s.lastClash) > time.Minute
+	if logClash {
+		s.lastClash = now
 	}
 	s.mu.Unlock()
 	if r == nil {
 		return nil // no router's secret signs it
 	}
-	if matches > 1 {
-		// Two routers share a secret: whose list applies cannot be told.
-		log.Printf("[netpulse] radius backup: a request matches several routers' secret; dropped")
+	if clash {
+		// Two live routers share a secret: whose list applies cannot be told.
+		if logClash {
+			log.Printf("[netpulse] radius backup: requests match several routers' secret; dropped")
+		}
 		return nil
 	}
 	var proxy [][]byte
+	credential := false
 	for _, a := range p.attrs {
-		if a[0][0] == attrProxyState {
+		switch a[0][0] {
+		case attrProxyState:
 			proxy = append(proxy, a[1])
+		case attrEAPMessage, attrCHAPPassword:
+			credential = true
 		}
+	}
+	if credential {
 		// MAC authentication only: a credential login is not ours.
-		if a[0][0] == attrEAPMessage || a[0][0] == attrCHAPPassword {
-			return respond(accessReject, p, r.secret, proxy)
-		}
+		return respond(accessReject, p, r.secret, proxy)
 	}
 	mac := ""
 	if v := p.attr(attrCallingStation); v != nil {

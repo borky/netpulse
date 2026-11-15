@@ -130,7 +130,15 @@ func TestBackupForgetsDisabledStaleAndAmbiguous(t *testing.T) {
 	s.Update("a", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true})
 	s.Update("b", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: false})
 	if s.Handle(request(t, 2, "02-00-00-00-00-0B", secret)) != nil {
-		t.Fatal("answered a request two routers' secret signs")
+		t.Fatal("answered a request two live routers' secret signs")
+	}
+	// One of them stopped pushing a while ago (renamed router): the newest
+	// answers instead of the backup going silent for a day.
+	s.now = func() time.Time { return now.Add(fresh + time.Minute) }
+	s.Update("b", &probe.QuarantineRadiusInfo{Secret: secret, Enforce: true})
+	req := request(t, 3, "02-00-00-00-00-0B", secret)
+	if c := code(t, s.Handle(req), req); c != accessReject {
+		t.Fatalf("the newest router's list did not answer: %d", c)
 	}
 }
 
