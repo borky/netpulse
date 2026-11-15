@@ -18,4 +18,7 @@ type QuarantineRadiusInfo struct {
 	// and approves).
 	PauseUntil int64  `json:"pauseUntil,omitempty"`
 	PauseKind  string `json:"pauseKind,omitempty"`
+	// Disabled: the panel's RADIUS layer was turned off; the server drops
+	// what it holds for this router (no secret is sent with it).
+	Disabled bool `json:"disabled,omitempty"`
 }
