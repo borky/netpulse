@@ -442,6 +442,8 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/devices/{mac}/dns", s.handleDeviceDNS)
 	mux.HandleFunc("GET /api/dns/overview", s.handleDNSOverview)
 	mux.HandleFunc("GET /api/quarantine", s.handleQuarantine)
+	// Admins only: the trusted list is what someone copying a MAC wants.
+	mux.Handle("GET /api/quarantine", auth.RequireAdmin(http.HandlerFunc(s.handleQuarantine)))
 	mux.Handle("PUT /api/devices/{mac}/override", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceOverridePut)))
 	mux.Handle("GET /api/devices/{mac}/override", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceOverrideGet)))
 	mux.Handle("PUT /api/devices/{mac}/ban", auth.RequireAdmin(http.HandlerFunc(s.handleDeviceBanPut)))

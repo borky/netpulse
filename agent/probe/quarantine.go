@@ -12,6 +12,11 @@ type QuarantineInfo struct {
 	// Devices: every approved or waiting device, and those reported as a
 	// possible copied MAC.
 	Devices []QuarantineDevice `json:"devices,omitempty"`
+	// PauseUntil (unix seconds) and PauseKind ("learn" or "off"): a pause
+	// is running. "off": nothing is enforced, so a waiting device is not
+	// restricted; "learn": new devices are approved as they join.
+	PauseUntil int64  `json:"pauseUntil,omitempty"`
+	PauseKind  string `json:"pauseKind,omitempty"`
 }
 
 // QuarantineDevice is one device's quarantine state.
@@ -22,7 +27,8 @@ type QuarantineDevice struct {
 	// internet).
 	State string `json:"state"`
 	// Report: "notice" or "alert" while the copied-MAC detection reports
-	// this device and nobody has dealt with it yet; "" otherwise.
+	// this device and nobody has dealt with it yet ("alert" too once it
+	// was moved back to quarantine automatically); "" otherwise.
 	Report string `json:"report,omitempty"`
 }
 

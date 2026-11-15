@@ -343,7 +343,7 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	var reply map[string]any
 	if quarantineData != nil && auth.IsSecureRequest(r) {
 		quarantinestate.Default.Update(p.Router, quarantineData)
-		reply = s.quarantineReply(p.Router, quarantineData)
+		reply = s.quarantineReply(quarantineData)
 	}
 
 	// Fase 18 (#452): persistir scans pasivos de vecinos si el payload trae
@@ -397,10 +397,10 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 
 // quarantineReply: the UniFi controller's view of the devices a router's
 // quarantine report lists, or nil when the server reads no controller (or
-// its last read is too old). Only the MACs the router itself listed.
-func (s *server) quarantineReply(slug string, info *probe.QuarantineInfo) map[string]any {
+// its last read is too old). Only the MACs that report listed.
+func (s *server) quarantineReply(info *probe.QuarantineInfo) map[string]any {
 	src, ok := s.adapter.(interface {
-		QuarantineStations(macs []string, wanted func(string) bool) []probe.QuarantineStation
+		QuarantineStations(macs []string) []probe.QuarantineStation
 	})
 	if !ok || info == nil || !info.Enabled {
 		return nil
@@ -409,9 +409,7 @@ func (s *server) quarantineReply(slug string, info *probe.QuarantineInfo) map[st
 	for _, d := range info.Devices {
 		macs = append(macs, d.MAC)
 	}
-	stations := src.QuarantineStations(macs, func(mac string) bool {
-		return quarantinestate.Default.Listed(slug, mac)
-	})
+	stations := src.QuarantineStations(macs)
 	if stations == nil {
 		return nil
 	}

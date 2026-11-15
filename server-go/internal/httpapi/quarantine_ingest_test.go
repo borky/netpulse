@@ -100,6 +100,15 @@ func TestIngestKeepsTheQuarantineOnlyOverTLS(t *testing.T) {
 		}
 	}
 
+	// Admins only.
+	viewer := createUserAndLogin(t, ts.URL, ts.cookie, "watcher", "test123456", "user")
+	req, _ := http.NewRequest("GET", ts.URL+"/api/quarantine", nil)
+	req.Header.Set("Cookie", "session="+viewer)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	if res, err := http.DefaultClient.Do(req); err != nil || res.StatusCode != http.StatusForbidden {
+		t.Fatalf("a non-admin read the trusted list: %v %v", res.StatusCode, err)
+	}
+
 	// Turning the quarantine off clears what is shown.
 	res, _ = ingestOver(t, ts, token, strings.Replace(validPayload(now+2), `"fdb":{"macs":{}}`, `"fdb":{"macs":{}},"quarantine":{"enabled":false}`, 1), true)
 	if res.StatusCode/100 != 2 {

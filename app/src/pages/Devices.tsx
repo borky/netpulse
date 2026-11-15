@@ -1062,6 +1062,13 @@ function QuarantinePill({ device }: { device: ClientDevice }) {
       </span>
     )
   }
+  if (q?.state === 'waiting' && q.pause === 'off') {
+    return (
+      <span title={t('devices.quarantine.pausedTip')}>
+        <StatusPill tone="muted" label={t('devices.quarantine.paused')} />
+      </span>
+    )
+  }
   if (q?.state === 'waiting') {
     return (
       <span title={t('devices.quarantine.waitingTip')}>
@@ -1089,7 +1096,7 @@ function QuarantineItem({ device }: { device: ClientDevice }) {
   return (
     <DetailItem label={t('devices.quarantine.label')}>
       <span className="inline-flex flex-wrap items-center gap-2">
-        {q.report ? (
+        {q.report || (q.state === 'waiting' && q.pause === 'off') ? (
           <QuarantinePill device={device} />
         ) : (
           <StatusPill tone={q.state === 'waiting' ? 'warn' : 'ok'} label={t(`devices.quarantine.${q.state}`)} />
