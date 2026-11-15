@@ -301,6 +301,10 @@ export interface Device {
   isNew?: boolean
   /** ... y esa primera vez cae dentro de los últimos 7 días (tile "New (7 days)"). */
   newThisWeek?: boolean
+  /** The device quarantine of a router's panel (NetGrip), as it last
+   *  reported it. Filled in by the app from GET /api/quarantine (HTTPS only),
+   *  never by /api/devices. */
+  quarantine?: QuarantineState
   sparkline: number[]
   /** Puerto físico del router/switch donde se aprende la MAC (cableados; FDB). */
   port?: string | null
@@ -783,3 +787,16 @@ export interface NetworkInfo {
 export function isNameless(d: Pick<Device, 'name' | 'mac' | 'nameInferred'>): boolean {
   return d.name === d.mac || !!d.nameInferred
 }
+
+/** One device in GET /api/quarantine. */
+export interface QuarantineEntry {
+  /** Lowercase MAC the router listed (may be one of the device's linked addresses). */
+  mac: string
+  /** Slug of the agent whose panel decides (approving happens there). */
+  router: string
+  state: 'approved' | 'waiting'
+  /** The panel's copied-MAC detection reports this device. */
+  report?: 'notice' | 'alert'
+}
+
+export type QuarantineState = QuarantineEntry

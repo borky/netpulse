@@ -624,6 +624,16 @@
       "error": "Could not read the DNS activity. Check that AdGuard Home is reachable.",
       "empty": "No DNS queries recorded for this device in the selected window.",
       "gap": "Some entries were rotated out of the AdGuard log before they could be read, so a stretch of this window is missing."
+    },
+    "quarantine": {
+      "waiting": "Waiting for approval",
+      "approved": "Approved",
+      "notice": "Possible copied MAC",
+      "alert": "Possible copied MAC",
+      "label": "Quarantine",
+      "open": "Open in NetGrip",
+      "waitingTip": "Not approved in the router's quarantine: it gets at most the internet until you approve it in NetGrip.",
+      "reportTip": "The router's copied-MAC detection reports this device. Check the evidence in NetGrip."
     }
   },
   "home": {

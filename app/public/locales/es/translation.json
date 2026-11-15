@@ -624,6 +624,16 @@
       "error": "No se pudo leer la actividad DNS. Comprueba que AdGuard Home responde.",
       "empty": "No hay consultas DNS registradas para este dispositivo en la ventana elegida.",
       "gap": "Parte de las entradas rotaron del registro de AdGuard antes de poder leerse, así que falta un tramo de esta ventana."
+    },
+    "quarantine": {
+      "waiting": "Esperando aprobación",
+      "approved": "Aprobado",
+      "notice": "Posible MAC copiada",
+      "alert": "Posible MAC copiada",
+      "label": "Cuarentena",
+      "open": "Abrir en NetGrip",
+      "waitingTip": "No aprobado en la cuarentena del router: como mucho tiene internet hasta que lo apruebes en NetGrip.",
+      "reportTip": "La detección de MAC copiadas del router informa de este dispositivo. Revisa las pruebas en NetGrip."
     }
   },
   "home": {

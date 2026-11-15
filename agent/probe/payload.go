@@ -106,6 +106,9 @@ type PayloadData struct {
 	// QuarantineRadius: the panel's RADIUS decisions for a backup server
 	// (see QuarantineRadiusInfo). Only over pinned HTTPS; nil otherwise.
 	QuarantineRadius *QuarantineRadiusInfo `json:"quarantineRadius,omitempty"`
+	// Quarantine: each device's quarantine state (see QuarantineInfo).
+	// Only over pinned HTTPS; nil otherwise.
+	Quarantine *QuarantineInfo `json:"quarantine,omitempty"`
 }
 
 // MQTTData: exposición propia del equipo a Home Assistant por MQTT (#832).

@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -368,4 +369,110 @@ func band(radio string) string {
 	default:
 		return "2.4 GHz"
 	}
+}
+
+// Station is how one client is connected right now, as the device
+// quarantine's copied-MAC detection compares it (see ParseStations). Unlike
+// Client it keeps wired clients the controller does not place, and it
+// carries the Wi-Fi details Client leaves out.
+type Station struct {
+	MAC   string // upper-case, like Client
+	Wired bool
+	// Wi-Fi only: the access point, the band ("2g", "5g", "6g"), the Wi-Fi
+	// standard in use ("n", "ac", "ax", "be"), spatial streams and Wi-Fi 7
+	// multi-link. Empty or zero when the controller does not say.
+	APMAC string
+	Band  string
+	Proto string
+	NSS   int
+	MLO   bool
+}
+
+// rawStation holds the fields ParseStations reads. The controller does not
+// document them and sends some as strings on some versions, so the numeric
+// and boolean ones are read loosely.
+type rawStation struct {
+	MAC        string          `json:"mac"`
+	IsWired    json.RawMessage `json:"is_wired"`
+	ApMAC      string          `json:"ap_mac"`
+	Radio      string          `json:"radio"`
+	RadioProto string          `json:"radio_proto"`
+	NSS        json.RawMessage `json:"nss"`
+	IsMLO      json.RawMessage `json:"is_mlo"`
+}
+
+// ParseStations reads the station list for the quarantine, by upper-case
+// MAC. A record it cannot read is skipped, not fatal.
+func ParseStations(raw []byte) map[string]Station {
+	var in []json.RawMessage
+	if json.Unmarshal(raw, &in) != nil {
+		return nil
+	}
+	out := make(map[string]Station, len(in))
+	for _, r := range in {
+		var s rawStation
+		if json.Unmarshal(r, &s) != nil || s.MAC == "" {
+			continue
+		}
+		st := Station{MAC: strings.ToUpper(s.MAC), Wired: looseBool(s.IsWired)}
+		if !st.Wired {
+			if s.ApMAC == "" {
+				continue // neither wired nor on an access point: nothing to say
+			}
+			st.APMAC = strings.ToUpper(s.ApMAC)
+			st.Band = stationBand(s.Radio)
+			st.Proto = cleanProto(s.RadioProto)
+			if n := looseInt(s.NSS); n > 0 && n <= 16 {
+				st.NSS = n
+			}
+			st.MLO = looseBool(s.IsMLO)
+		}
+		out[st.MAC] = st
+	}
+	return out
+}
+
+// stationBand: the radio code as a short band, "" when unknown (unlike band,
+// which guesses 2.4 GHz: a guess here would read as a change of radio).
+func stationBand(radio string) string {
+	switch radio {
+	case "ng":
+		return "2g"
+	case "na":
+		return "5g"
+	case "6e":
+		return "6g"
+	}
+	return ""
+}
+
+// cleanProto keeps a Wi-Fi standard code ("ax", "be") and drops anything
+// else: it ends up in a router's notices.
+func cleanProto(p string) string {
+	p = strings.ToLower(strings.TrimSpace(p))
+	if p == "" || len(p) > 4 {
+		return ""
+	}
+	for _, c := range p {
+		if c < 'a' || c > 'z' {
+			return ""
+		}
+	}
+	return p
+}
+
+func looseBool(raw json.RawMessage) bool {
+	switch strings.Trim(strings.ToLower(string(raw)), `"`) {
+	case "true", "1":
+		return true
+	}
+	return false
+}
+
+func looseInt(raw json.RawMessage) int {
+	n, err := strconv.Atoi(strings.Trim(string(raw), `"`))
+	if err != nil {
+		return 0
+	}
+	return n
 }

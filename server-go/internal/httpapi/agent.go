@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gnacho/netpulse/server-go/internal/quarantinestate"
 	"github.com/gnacho/netpulse/server-go/internal/radiusbackup"
 	"io"
 	"log"
@@ -281,6 +282,10 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	// once the push is accepted, and only if it came over TLS.
 	radiusData := p.Data.QuarantineRadius
 	p.Data.QuarantineRadius = nil
+	// FORK: the quarantine's device states, likewise kept apart (memory
+	// only) and only from a push that came over TLS.
+	quarantineData := p.Data.Quarantine
+	p.Data.Quarantine = nil
 	if !agentSlugRe.MatchString(p.Router) || p.Ts <= 0 {
 		writeError(w, http.StatusBadRequest, "invalid_payload",
 			`Se esperaba { "router": "<slug>", "ts": <unix>, "data": {...} }`)
@@ -332,6 +337,14 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	if radiusData != nil && auth.IsSecureRequest(r) {
 		radiusbackup.Default.Update(p.Router, radiusData)
 	}
+	// The reply tells the router's copied-MAC detection how the devices
+	// it listed are connected, as the UniFi controller sees them: only
+	// over TLS (the agent also accepts it only from a pinned server).
+	var reply map[string]any
+	if quarantineData != nil && auth.IsSecureRequest(r) {
+		quarantinestate.Default.Update(p.Router, quarantineData)
+		reply = s.quarantineReply(p.Router, quarantineData)
+	}
 
 	// Fase 18 (#452): persistir scans pasivos de vecinos si el payload trae
 	// datos wireless. Se guardan incluso si el payload no es "fresco" para no
@@ -375,7 +388,34 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	// Fase 8.2 (R8): persistir el último push en kv (agent.state.<slug>) para
 	// que lastSeen/versión/payload sobrevivan a un reinicio del servidor.
 	s.persistAgentState(p.Router, s.agents.Snapshot(p.Router))
-	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+	if reply == nil {
+		reply = map[string]any{}
+	}
+	reply["ok"] = true
+	writeJSON(w, http.StatusAccepted, reply)
+}
+
+// quarantineReply: the UniFi controller's view of the devices a router's
+// quarantine report lists, or nil when the server reads no controller (or
+// its last read is too old). Only the MACs the router itself listed.
+func (s *server) quarantineReply(slug string, info *probe.QuarantineInfo) map[string]any {
+	src, ok := s.adapter.(interface {
+		QuarantineStations(macs []string, wanted func(string) bool) []probe.QuarantineStation
+	})
+	if !ok || info == nil || !info.Enabled {
+		return nil
+	}
+	macs := make([]string, 0, len(info.Devices))
+	for _, d := range info.Devices {
+		macs = append(macs, d.MAC)
+	}
+	stations := src.QuarantineStations(macs, func(mac string) bool {
+		return quarantinestate.Default.Listed(slug, mac)
+	})
+	if stations == nil {
+		return nil
+	}
+	return map[string]any{"stations": stations}
 }
 
 // ---------------------------------------------------------------------------
