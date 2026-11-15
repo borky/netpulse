@@ -619,7 +619,9 @@
       "label": "Quarantine",
       "open": "Open in NetGrip",
       "waitingTip": "Not approved in the router's quarantine: it gets at most the internet until you approve it in NetGrip.",
-      "reportTip": "The router's copied-MAC detection reports this device. Check the evidence in NetGrip."
+      "reportTip": "The router's copied-MAC detection reports this device. Check the evidence in NetGrip.",
+      "paused": "Not approved (quarantine paused)",
+      "pausedTip": "Not approved, but the router's quarantine is paused: nothing is enforced until the pause ends."
     }
   },
   "home": {

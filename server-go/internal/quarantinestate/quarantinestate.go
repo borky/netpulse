@@ -29,11 +29,23 @@ type State struct {
 	Router string // the router whose panel manages it
 	State  string // "approved" | "waiting"
 	Report string // "notice" | "alert" | ""
+	// Pause: "off" or "learn" while a pause runs on that router ("off":
+	// nothing is enforced, so a waiting device is not restricted).
+	Pause string
 }
 
 type router struct {
-	devices map[string]State // by lowercase MAC
-	at      time.Time
+	devices   map[string]State // by lowercase MAC
+	at        time.Time
+	pauseTil  time.Time
+	pauseKind string
+}
+
+func (r *router) state(st State, now time.Time) State {
+	if now.Before(r.pauseTil) {
+		st.Pause = r.pauseKind
+	}
+	return st
 }
 
 // Store holds each router's latest report.
@@ -62,6 +74,9 @@ func (s *Store) Update(slug string, info *probe.QuarantineInfo) {
 		return
 	}
 	r := &router{devices: make(map[string]State, len(info.Devices)), at: s.now()}
+	if info.PauseKind == "off" || info.PauseKind == "learn" {
+		r.pauseTil, r.pauseKind = time.Unix(info.PauseUntil, 0), info.PauseKind
+	}
 	for _, d := range info.Devices {
 		mac := normMAC(d.MAC)
 		if mac == "" || (d.State != "approved" && d.State != "waiting") {
@@ -103,9 +118,10 @@ func (s *Store) Lookup(macs ...string) (State, bool) {
 		var best State
 		found := false
 		for _, slug := range slugs {
-			st, ok := s.routers[slug].devices[mac]
+			r := s.routers[slug]
+			st, ok := r.devices[mac]
 			if ok && (!found || rank(st) > rank(best)) {
-				best, found = st, true
+				best, found = r.state(st, now), true
 			}
 		}
 		if found {
@@ -121,6 +137,7 @@ type Entry struct {
 	Router string `json:"router"`
 	State  string `json:"state"`
 	Report string `json:"report,omitempty"`
+	Pause  string `json:"pause,omitempty"`
 }
 
 // Snapshot lists every device of every fresh report, one entry per MAC (the
@@ -145,27 +162,11 @@ func (s *Store) Snapshot() []Entry {
 	s.mu.Unlock()
 	for mac := range macs {
 		if st, ok := s.Lookup(mac); ok {
-			out = append(out, Entry{MAC: mac, Router: st.Router, State: st.State, Report: st.Report})
+			out = append(out, Entry{MAC: mac, Router: st.Router, State: st.State, Report: st.Report, Pause: st.Pause})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].MAC < out[j].MAC })
 	return out
-}
-
-// Listed reports whether a fresh report from slug lists mac: the server
-// tells a router about a device only if that router asked about it.
-func (s *Store) Listed(slug, mac string) bool {
-	if s == nil {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r := s.routers[slug]
-	if r == nil || s.now().Sub(r.at) > maxAge {
-		return false
-	}
-	_, ok := r.devices[normMAC(mac)]
-	return ok
 }
 
 func rank(s State) int {

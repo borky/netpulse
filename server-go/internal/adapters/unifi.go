@@ -125,17 +125,16 @@ func (l *Live) unifiInventoryCached() *unifiInventory {
 const quarantineStationsMaxAge = 5 * time.Minute
 
 // QuarantineStations returns what the controller said, at its last read,
-// about the devices macs names that wanted(mac) accepts, for the copied-MAC
-// detection of the router's panel. nil when there is no recent read. It
-// never calls the controller.
-func (l *Live) QuarantineStations(macs []string, wanted func(mac string) bool) []probe.QuarantineStation {
+// about the devices macs names, for the copied-MAC detection of the router's
+// panel. nil when there is no recent read. It never calls the controller.
+func (l *Live) QuarantineStations(macs []string) []probe.QuarantineStation {
 	if l == nil {
 		return nil
 	}
-	return quarantineStations(l.unifi.latest.Load(), time.Now(), macs, wanted)
+	return quarantineStations(l.unifi.latest.Load(), time.Now(), macs)
 }
 
-func quarantineStations(r *unifiRead, now time.Time, macs []string, wanted func(string) bool) []probe.QuarantineStation {
+func quarantineStations(r *unifiRead, now time.Time, macs []string) []probe.QuarantineStation {
 	if r == nil || r.inv == nil || now.Sub(r.at) > quarantineStationsMaxAge {
 		return nil
 	}
@@ -144,7 +143,7 @@ func quarantineStations(r *unifiRead, now time.Time, macs []string, wanted func(
 	for _, m := range macs {
 		key := strings.ToUpper(strings.TrimSpace(m))
 		st, ok := r.inv.stations[key]
-		if !ok || seen[key] || !wanted(m) {
+		if !ok || seen[key] {
 			continue
 		}
 		seen[key] = true

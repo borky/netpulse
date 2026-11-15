@@ -7,7 +7,7 @@ import (
 	"github.com/gnacho/netpulse/server-go/internal/unifi"
 )
 
-// Only listed, wanted devices, from a recent read; the AP's model with it.
+// Only listed devices, from a recent read; the AP's model with it.
 func TestQuarantineStations(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	inv := &unifiInventory{
@@ -18,9 +18,8 @@ func TestQuarantineStations(t *testing.T) {
 			"02:00:00:00:00:03": {MAC: "02:00:00:00:00:03", Wired: true},
 		},
 	}
-	all := func(string) bool { return true }
 	macs := []string{"02:00:00:00:00:01", "02:00:00:00:00:02", "02:00:00:00:00:02", "02:00:00:00:00:09"}
-	got := quarantineStations(&unifiRead{inv: inv, at: now}, now, macs, all)
+	got := quarantineStations(&unifiRead{inv: inv, at: now}, now, macs)
 	if len(got) != 2 {
 		t.Fatalf("stations: %+v", got)
 	}
@@ -30,16 +29,13 @@ func TestQuarantineStations(t *testing.T) {
 	if g := got[1]; !g.Wired || g.APModel != "" {
 		t.Fatalf("wired: %+v", g)
 	}
-	if got := quarantineStations(&unifiRead{inv: inv, at: now}, now, macs, func(m string) bool { return m == "02:00:00:00:00:02" }); len(got) != 1 {
-		t.Fatalf("an unwanted device was told: %+v", got)
-	}
-	if got := quarantineStations(&unifiRead{inv: inv, at: now}, now, nil, all); got == nil || len(got) != 0 {
+	if got := quarantineStations(&unifiRead{inv: inv, at: now}, now, nil); got == nil || len(got) != 0 {
 		t.Fatalf("a recent read with nothing to tell is an empty list: %v", got)
 	}
-	if quarantineStations(&unifiRead{inv: inv, at: now.Add(-quarantineStationsMaxAge - time.Second)}, now, macs, all) != nil {
+	if quarantineStations(&unifiRead{inv: inv, at: now.Add(-quarantineStationsMaxAge - time.Second)}, now, macs) != nil {
 		t.Fatal("an old read was used")
 	}
-	if quarantineStations(nil, now, macs, all) != nil {
+	if quarantineStations(nil, now, macs) != nil {
 		t.Fatal("no read")
 	}
 }

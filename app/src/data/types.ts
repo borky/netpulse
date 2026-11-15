@@ -776,6 +776,8 @@ export interface QuarantineEntry {
   state: 'approved' | 'waiting'
   /** The panel's copied-MAC detection reports this device. */
   report?: 'notice' | 'alert'
+  /** A pause runs on that router: "off" enforces nothing, "learn" approves new devices as they join. */
+  pause?: 'off' | 'learn'
 }
 
 export type QuarantineState = QuarantineEntry

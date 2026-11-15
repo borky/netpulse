@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { QuarantineEntry } from '@/data/types'
-import { fetchJson } from '@/lib/utils'
 
 /** How often the device list re-reads the quarantine (routers report it with
  *  each full push, every 30 s by default). */
@@ -8,9 +7,9 @@ const REFRESH_MS = 30_000
 
 /**
  * The device quarantine the routers' panels (NetGrip) report, by lowercase
- * MAC. The server answers only over HTTPS (the trusted list is what someone
- * copying a MAC wants), so over plain HTTP, in the demo, or with no panel
- * reporting, this is an empty map and the list shows nothing.
+ * MAC. The server answers only admins and only over HTTPS (the trusted list
+ * is what someone copying a MAC wants), so otherwise, in the demo, or with
+ * no panel reporting, this is an empty map and the list shows nothing.
  */
 export function useQuarantine(enabled: boolean): Map<string, QuarantineEntry> {
   const [byMac, setByMac] = useState<Map<string, QuarantineEntry>>(() => new Map())
@@ -20,13 +19,34 @@ export function useQuarantine(enabled: boolean): Map<string, QuarantineEntry> {
       return
     }
     let disposed = false
+    let last = ''
     const load = async () => {
-      const r = await fetchJson<{ secure: boolean; devices: QuarantineEntry[] }>('/api/quarantine')
-      if (disposed || !r.ok) return
-      setByMac(new Map((r.data.devices ?? []).map((d) => [d.mac.toLowerCase(), d])))
+      let res: Response
+      try {
+        res = await fetch('/api/quarantine')
+      } catch {
+        return // network trouble: try again at the next tick
+      }
+      if (disposed) return
+      // Not an admin (403), or a server without this endpoint: nothing
+      // will come, so stop asking.
+      if (res.status === 403 || res.status === 404) {
+        window.clearInterval(id)
+        return
+      }
+      if (!res.ok || !(res.headers.get('content-type') ?? '').includes('application/json')) return
+      const data = (await res.json()) as { secure?: boolean; devices?: QuarantineEntry[] }
+      if (disposed) return
+      if (data.secure === false) window.clearInterval(id) // plain HTTP: the server never lists it
+      // A new map only when something changed, so the device list is not
+      // rebuilt every poll.
+      const raw = JSON.stringify(data.devices ?? [])
+      if (raw === last) return
+      last = raw
+      setByMac(new Map((data.devices ?? []).map((d) => [d.mac.toLowerCase(), d])))
     }
-    void load()
     const id = window.setInterval(() => void load(), REFRESH_MS)
+    void load()
     return () => {
       disposed = true
       window.clearInterval(id)

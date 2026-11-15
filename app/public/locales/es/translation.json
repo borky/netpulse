@@ -619,7 +619,9 @@
       "label": "Cuarentena",
       "open": "Abrir en NetGrip",
       "waitingTip": "No aprobado en la cuarentena del router: como mucho tiene internet hasta que lo apruebes en NetGrip.",
-      "reportTip": "La detección de MAC copiadas del router informa de este dispositivo. Revisa las pruebas en NetGrip."
+      "reportTip": "La detección de MAC copiadas del router informa de este dispositivo. Revisa las pruebas en NetGrip.",
+      "paused": "Sin aprobar (cuarentena en pausa)",
+      "pausedTip": "Sin aprobar, pero la cuarentena del router está en pausa: no se aplica nada hasta que acabe."
     }
   },
   "home": {
