@@ -460,6 +460,71 @@ func TestReservationDelete(t *testing.T) {
 	}
 }
 
+// FORK: an entry the router's panel made to name a device (name, no
+// address) is not a reservation; removing a reservation from such an
+// entry keeps the name; this server's own reservations still go whole.
+func TestReservationNamedEntries(t *testing.T) {
+	const nameOnly = dhcpEmpty + `dhcp.netgrip_devname_aabbccddeeff=host
+dhcp.netgrip_devname_aabbccddeeff.name='X1C'
+dhcp.netgrip_devname_aabbccddeeff.mac='aa:bb:cc:dd:ee:ff'
+`
+	ts := makeDeviceActionsTestServer(t, newSSH(nameOnly, fwEmpty))
+	if body := decodeBody(t, deviceReq(t, "GET", ts.URL, "/api/devices/"+devMAC+"/reservation", ts.cookie, "")); body["reserved"] != false {
+		t.Errorf("a name-only entry read as a reservation: %v", body)
+	}
+	if res := deviceReq(t, "DELETE", ts.URL, "/api/devices/"+devMAC+"/reservation", ts.cookie, ""); res.StatusCode != 404 {
+		t.Errorf("DELETE of a name-only entry: got %d want 404", res.StatusCode)
+	}
+
+	const namedReserved = nameOnly + `dhcp.netgrip_devname_aabbccddeeff.ip='192.168.1.60'
+`
+	ssh := newSSH(namedReserved, fwEmpty)
+	ts = makeDeviceActionsTestServer(t, ssh)
+	res := deviceReq(t, "DELETE", ts.URL, "/api/devices/"+devMAC+"/reservation", ts.cookie, "")
+	if res.StatusCode != 200 {
+		t.Fatalf("DELETE: %d", res.StatusCode)
+	}
+	res.Body.Close()
+	if !ssh.saw("uci delete dhcp.netgrip_devname_aabbccddeeff.ip") {
+		t.Errorf("the address was not removed: %v", ssh.cmdsSnapshot())
+	}
+	for _, c := range ssh.cmdsSnapshot() {
+		if strings.Contains(c, "uci delete dhcp.netgrip_devname_aabbccddeeff") && !strings.Contains(c, "uci delete dhcp.netgrip_devname_aabbccddeeff.ip") {
+			t.Errorf("the whole named entry was removed: %q", c)
+		}
+	}
+
+	ssh = newSSH(dhcpDevHost, fwEmpty)
+	ts = makeDeviceActionsTestServer(t, ssh)
+	res = deviceReq(t, "DELETE", ts.URL, "/api/devices/"+devMAC+"/reservation", ts.cookie, "")
+	res.Body.Close()
+	if ssh.saw("np_host_aabbccddeeff.ip") {
+		t.Error("this server's own named reservation was not removed whole")
+	}
+
+	// A named static lease made in LuCI goes whole, as upstream.
+	const luci = dhcpEmpty + `dhcp.@host[0]=host
+dhcp.@host[0].name='tv'
+dhcp.@host[0].mac='aa:bb:cc:dd:ee:ff'
+dhcp.@host[0].ip='192.168.1.60'
+`
+	ssh = newSSH(luci, fwEmpty)
+	ts = makeDeviceActionsTestServer(t, ssh)
+	res = deviceReq(t, "DELETE", ts.URL, "/api/devices/"+devMAC+"/reservation", ts.cookie, "")
+	res.Body.Close()
+	if res.StatusCode != 200 || !ssh.saw("uci delete dhcp.@host[0]") {
+		t.Fatalf("the LuCI static lease was not removed (%d): %v", res.StatusCode, ssh.cmdsSnapshot())
+	}
+	if ssh.saw(".ip") && !ssh.saw("uci delete dhcp.@host[0]") {
+		t.Errorf("a LuCI static lease was not removed whole: %v", ssh.cmdsSnapshot())
+	}
+	for _, c := range ssh.cmdsSnapshot() {
+		if strings.Contains(c, "uci delete dhcp.@host[0].ip") {
+			t.Errorf("only the address of a LuCI static lease was removed: %q", c)
+		}
+	}
+}
+
 func TestReservationDeleteNotFound(t *testing.T) {
 	ssh := newSSH(dhcpEmpty, fwEmpty)
 	ts := makeDeviceActionsTestServer(t, ssh)
