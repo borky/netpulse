@@ -1133,11 +1133,25 @@ function ParentLine({ device, className }: { device: ClientDevice; className?: s
   )
 }
 
-/** Detail row: the parent box and, for a wired client, the port on it. */
+/** Detail row: the parent box and, for a wired client, the port on it. A
+ *  station of the router's own Wi-Fi has no parent (it hangs from its
+ *  router): it shows the router and the network, which that router's radio
+ *  reported. Nothing for a device whose placement is not observed. */
 function ConnectedToItem({ device }: { device: ClientDevice }) {
   const { t } = useTranslation()
+  const { routers } = useNetPulse()
   const parent = useParentName(device.attachTo)
-  if (!parent) return null
+  if (!parent) {
+    if (device.attachTo || !device.online || !(device.wifiIface || device.ssid)) return null
+    const router = routers.find((r) => r.id === device.routerId)?.name ?? device.routerId
+    if (!router) return null
+    const net = device.ssid || (device.band !== 'cable' && device.band !== '—' ? device.band : '')
+    return (
+      <DetailItem label={t('devices.detail.connectedTo')}>
+        {net ? `${router} · ${net}` : router}
+      </DetailItem>
+    )
+  }
   const port = device.portLabel ?? device.port ?? ''
   return (
     <DetailItem label={t('devices.detail.connectedTo')}>
