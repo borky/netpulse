@@ -253,7 +253,9 @@ func (s *server) handleDeviceReservationGet(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	hosts := parseDhcpHosts(lines)
-	if h := findDhcpHost(hosts, mac); h != nil {
+	// FORK: a host entry with a name and no address (the router's panel
+	// writes those for devices it names) is not a reservation.
+	if h := findDhcpHost(hosts, mac); h != nil && h.IP != "" {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"reserved": true,
 			"ip":       h.IP,
@@ -498,7 +500,7 @@ func (s *server) handleDeviceReservationDelete(w http.ResponseWriter, r *http.Re
 	}
 	hosts := parseDhcpHosts(lines)
 	h := findDhcpHost(hosts, mac)
-	if h == nil {
+	if h == nil || h.IP == "" {
 		writeError(w, http.StatusNotFound, "not_reserved")
 		return
 	}
@@ -517,6 +519,12 @@ func (s *server) handleDeviceReservationDelete(w http.ResponseWriter, r *http.Re
 	}
 
 	apply := []string{fmt.Sprintf("uci delete dhcp.%s", h.Section)}
+	if h.Name != "" && strings.HasPrefix(h.Section, "netgrip_") {
+		// FORK: an entry the router's panel (NetGrip) made names the
+		// device; removing the reservation keeps the name and only the
+		// fixed address goes. Every other entry goes whole, as upstream.
+		apply = []string{fmt.Sprintf("uci delete dhcp.%s.ip", h.Section)}
+	}
 	if err := s.runUCICommands(host, "dhcp", apply); err != nil {
 		writeError(w, http.StatusInternalServerError, "apply_error", err.Error())
 		return
