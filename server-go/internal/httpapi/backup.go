@@ -199,7 +199,7 @@ func (s *server) runBackup() (string, error) {
 // backupLoop es el bucle periódico de backups automáticos (#741).
 func (s *server) backupLoop(ctx context.Context, tickEvery time.Duration) {
 	s.backupMu.Lock()
-	cleanBackupLeftovers(filepath.Join(filepath.Dir(s.db.Path), "backups"))
+	cleanBackupLeftovers(filepath.Join(s.cfg.DataDir, "backups"))
 	s.backupMu.Unlock()
 	ticker := time.NewTicker(tickEvery)
 	defer ticker.Stop()

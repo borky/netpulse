@@ -3257,7 +3257,7 @@ function TrafficRetentionRow({ onSaved }: { onSaved: () => void }) {
 }
 
 function BackupsPanel() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [cfg, setCfg] = useState<{
     enabled: boolean; frequency_h: number; retention_days: number; last_run: string; time: string
     encrypted?: boolean; passphrase_unreadable?: boolean; secrets_unavailable?: boolean
