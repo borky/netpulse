@@ -56,4 +56,9 @@ type QuarantineStation struct {
 // a UniFi controller; nil means "nothing to say", not "no stations".
 type IngestReply struct {
 	Stations []QuarantineStation `json:"stations,omitempty"`
+	// Names: the names the server knows for devices, by lowercase MAC,
+	// only real ones (none inferred from a fingerprint, none that is just
+	// an address). Display only: an embedder shows one where it has no
+	// name of its own.
+	Names map[string]string `json:"names,omitempty"`
 }

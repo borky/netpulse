@@ -112,6 +112,12 @@ type Options struct {
 	// server with a pinned key, and only when the reply carries stations.
 	OnQuarantineStations func([]probe.QuarantineStation)
 
+	// OnDeviceNames receives the names the server knows for devices, by
+	// MAC (see probe.IngestReply.Names): display only, for an embedder's
+	// client list. Like OnQuarantineStations, only replies from an HTTPS
+	// server with a pinned key, and only when the reply carries names.
+	OnDeviceNames func(map[string]string)
+
 	// OnStatus recibe el estado en cada cambio (arranque, cada push, parada).
 	// Nunca rompe el bucle: un panic dentro del callback se recupera.
 	OnStatus func(Status)
@@ -180,7 +186,7 @@ func Run(ctx context.Context, opts Options) error {
 	client := push.New(opts.Server, opts.Token, &http.Client{Timeout: 10 * time.Second, Transport: transport})
 	log := opts.logger()
 	client.SetLogger(func(format string, args ...any) { log.Debug("[netpulse-agent] " + fmt.Sprintf(format, args)) })
-	if opts.OnQuarantineStations != nil && quarantineRadiusAllowed(opts) {
+	if (opts.OnQuarantineStations != nil || opts.OnDeviceNames != nil) && quarantineRadiusAllowed(opts) {
 		client.SetOnReply(func(body []byte) { handleIngestReply(opts, body) })
 	}
 
@@ -486,15 +492,26 @@ func quarantineRadiusAllowed(opts Options) bool {
 	return strings.HasPrefix(strings.ToLower(opts.Server), "https://") && opts.ServerFP != ""
 }
 
-// handleIngestReply hands the stations in a push reply to the embedder. A
-// reply without them (an older server, no UniFi controller, a push that
-// carried no quarantine report) says nothing and is ignored; a panic in the
-// callback never reaches the push loop.
+// handleIngestReply hands what a push reply carries to the embedder: the
+// stations and the device names, each to its own callback. A reply without
+// one (an older server, no UniFi controller, a push that carried no
+// quarantine report) says nothing about it and is ignored; a panic in a
+// callback never reaches the push loop, nor stops the other callback.
 func handleIngestReply(opts Options, body []byte) {
 	var r probe.IngestReply
-	if len(body) == 0 || json.Unmarshal(body, &r) != nil || r.Stations == nil {
+	if len(body) == 0 || json.Unmarshal(body, &r) != nil {
 		return
 	}
-	defer func() { _ = recover() }()
-	opts.OnQuarantineStations(r.Stations)
+	if r.Stations != nil && opts.OnQuarantineStations != nil {
+		func() {
+			defer func() { _ = recover() }()
+			opts.OnQuarantineStations(r.Stations)
+		}()
+	}
+	if r.Names != nil && opts.OnDeviceNames != nil {
+		func() {
+			defer func() { _ = recover() }()
+			opts.OnDeviceNames(r.Names)
+		}()
+	}
 }

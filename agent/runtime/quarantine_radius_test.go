@@ -43,3 +43,35 @@ func TestHandleIngestReply(t *testing.T) {
 	opts.OnQuarantineStations = func([]probe.QuarantineStation) { panic("boom") }
 	handleIngestReply(opts, []byte(`{"stations":[{"mac":"02:00:00:00:00:01"}]}`))
 }
+
+// Names in a reply reach their own callback, independent of the stations:
+// one missing, malformed or panicking never affects the other.
+func TestHandleIngestReplyNames(t *testing.T) {
+	var names []map[string]string
+	var stations int
+	opts := Options{
+		OnQuarantineStations: func([]probe.QuarantineStation) { stations++ },
+		OnDeviceNames:        func(m map[string]string) { names = append(names, m) },
+	}
+	handleIngestReply(opts, []byte(`{"ok":true}`))
+	handleIngestReply(opts, []byte(`{"names":"not a map"}`))
+	if len(names) != 0 || stations != 0 {
+		t.Fatalf("called without data: names %v stations %d", names, stations)
+	}
+	handleIngestReply(opts, []byte(`{"names":{"02:00:00:00:00:01":"Printer"}}`))
+	if len(names) != 1 || names[0]["02:00:00:00:00:01"] != "Printer" || stations != 0 {
+		t.Fatalf("names: %v stations %d", names, stations)
+	}
+	// A panicking names callback does not stop the stations one.
+	opts.OnDeviceNames = func(map[string]string) { panic("boom") }
+	handleIngestReply(opts, []byte(`{"names":{"02:00:00:00:00:01":"x"},"stations":[{"mac":"02:00:00:00:00:01"}]}`))
+	if stations != 1 {
+		t.Fatalf("stations callback skipped after a names panic")
+	}
+	// Only names wanted: stations are ignored without a callback.
+	opts = Options{OnDeviceNames: func(m map[string]string) { names = append(names, m) }}
+	handleIngestReply(opts, []byte(`{"stations":[{"mac":"02:00:00:00:00:01"}],"names":{"02:00:00:00:00:02":"NAS"}}`))
+	if len(names) != 2 {
+		t.Fatalf("names-only embedder: %v", names)
+	}
+}

@@ -345,6 +345,17 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 		quarantinestate.Default.Update(p.Router, quarantineData)
 		reply = s.quarantineReply(quarantineData)
 	}
+	// FORK: the names this server knows, for the router's panel to show
+	// where it has none (display only). Over TLS only, like the stations:
+	// the agent also takes them only from a pinned server.
+	if auth.IsSecureRequest(r) {
+		if names := s.deviceNamesForReply(); names != nil {
+			if reply == nil {
+				reply = map[string]any{}
+			}
+			reply["names"] = names
+		}
+	}
 
 	// Fase 18 (#452): persistir scans pasivos de vecinos si el payload trae
 	// datos wireless. Se guardan incluso si el payload no es "fresco" para no
