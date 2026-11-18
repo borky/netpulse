@@ -36,6 +36,10 @@ const (
 // Options configura Run. Server/Slug y Token (o PairingToken) son
 // obligatorios; Validate los comprueba antes de arrancar.
 type Options struct {
+	// NoStalePing: see probe.Options.NoStalePing (an embedder that keeps
+	// its quiet neighbours fresh itself).
+	NoStalePing bool
+
 	Server       string // URL del servidor ("https://..." o "http://...:3000")
 	Token        string // token del equipo (64 hex)
 	Slug         string // slug del equipo (agent.token.<slug> en el servidor)
@@ -196,6 +200,7 @@ func Run(ctx context.Context, opts Options) error {
 		GwPingTarget:  opts.GwTarget,
 		ScanInterval:  opts.ScanInterval,
 		ActiveUplink:  activeUplink,
+		NoStalePing:   opts.NoStalePing,
 	})
 
 	a := &agent{opts: opts, log: log, client: client}

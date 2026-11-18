@@ -82,6 +82,12 @@ type Options struct {
 	// through, when the embedder knows. nil or "" = decide from the routes,
 	// as before.
 	ActiveUplink func() string
+	// NoStalePing turns off the ping round to STALE ARP neighbours (#2073):
+	// for an embedder that keeps its quiet neighbours fresh by itself (a
+	// router panel probing its wired clients), where the round would only
+	// repeat that work at the cost of a ping process per neighbour. The ARP
+	// table is read as it is, as before #2073.
+	NoStalePing bool
 }
 
 // Prober sondea el equipo local y construye payloads. Mantiene el estado de
@@ -1432,7 +1438,7 @@ func StalePingTargets(arp map[string]string, stale map[string]bool) []string {
 // vuelven como estaban. Throttle propio (stalePingInterval) para no lanzar
 // pings en cada sondeo.
 func (p *Prober) confirmStaleNeighbours(ctx context.Context, arp map[string]string, stale map[string]bool) (map[string]string, map[string]bool, string) {
-	if p.run == nil || len(stale) == 0 {
+	if p.run == nil || p.opts.NoStalePing || len(stale) == 0 {
 		return arp, stale, ""
 	}
 	p.stalePingMu.Lock()
