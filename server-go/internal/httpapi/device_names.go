@@ -45,9 +45,12 @@ func (s *server) deviceNamesForReply(p *probe.Payload) map[string]string {
 					log.Printf("[netpulse] device names: %v", r)
 				}
 				deviceNamesMu.Lock()
-				if fresh != nil {
-					deviceNamesMap = fresh
+				if fresh == nil {
+					// A failed build leaves an empty list until the next
+					// one is due, not one try per push.
+					fresh = map[string]string{}
 				}
+				deviceNamesMap = fresh
 				deviceNamesAt, deviceNamesBuilding = time.Now(), false
 				deviceNamesMu.Unlock()
 			}()
@@ -89,9 +92,11 @@ func routerMACs(p *probe.Payload) map[string]bool {
 }
 
 // namesForRouter: the names of the MACs the router reported, bounded in
-// size; nil when there is none to send.
+// size. nil (nothing sent) before the first list is built or for a push
+// without MACs; an empty set when none of them has a name, so the panel
+// stops showing names that are gone.
 func namesForRouter(all map[string]string, macs map[string]bool) map[string]string {
-	if len(all) == 0 || len(macs) == 0 {
+	if all == nil || len(macs) == 0 {
 		return nil
 	}
 	out := map[string]string{}
@@ -105,9 +110,6 @@ func namesForRouter(all map[string]string, macs map[string]bool) map[string]stri
 			break
 		}
 		out[mac] = name
-	}
-	if len(out) == 0 {
-		return nil
 	}
 	return out
 }

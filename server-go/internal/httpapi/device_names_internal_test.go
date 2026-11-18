@@ -3,6 +3,7 @@ package httpapi
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gnacho/netpulse/agent/probe"
 )
@@ -23,9 +24,13 @@ func TestNamesForRouterOnlyItsOwnMACs(t *testing.T) {
 	if len(got) != 4 || got["02:00:00:00:00:99"] != "" || got["02:00:00:00:00:03"] != "NAS" {
 		t.Fatalf("names = %v", got)
 	}
-	// A light push (no MAC sections) or no names known: nothing to send.
+	// A light push (no MAC sections), or no list built yet: nothing sent.
 	if namesForRouter(all, routerMACs(&probe.Payload{})) != nil || namesForRouter(nil, routerMACs(p)) != nil {
 		t.Fatal("names sent with nothing to match")
+	}
+	// Known MACs, none named: an empty set, so the panel drops old names.
+	if got := namesForRouter(map[string]string{"02:00:00:00:00:99": "x"}, routerMACs(p)); got == nil || len(got) != 0 {
+		t.Fatalf("no-name reply = %v", got)
 	}
 }
 
@@ -52,4 +57,21 @@ func probeMAC(i int) string {
 	b[12], b[13] = hex[(i>>12)&15], hex[(i>>8)&15]
 	b[15], b[16] = hex[(i>>4)&15], hex[i&15]
 	return string(b)
+}
+
+// resetDeviceNamesForTest clears the package-level cache between tests.
+func resetDeviceNamesForTest() {
+	deviceNamesMu.Lock()
+	deviceNamesMap, deviceNamesAt, deviceNamesBuilding = nil, time.Time{}, false
+	deviceNamesMu.Unlock()
+}
+
+func TestDeviceNamesCacheReset(t *testing.T) {
+	resetDeviceNamesForTest()
+	t.Cleanup(resetDeviceNamesForTest)
+	deviceNamesMu.Lock()
+	defer deviceNamesMu.Unlock()
+	if deviceNamesMap != nil || deviceNamesBuilding {
+		t.Fatal("cache not reset")
+	}
 }

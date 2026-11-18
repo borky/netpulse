@@ -33,3 +33,10 @@ func TestDeviceNamesOfBoundsLength(t *testing.T) {
 		t.Fatalf("name kept %d runes", n)
 	}
 }
+
+func TestDeviceNamesOfDropsControlCharacters(t *testing.T) {
+	got := deviceNamesOf([]Device{{MAC: "02:00:00:00:00:01", Name: "Print\x00er\nHall"}})
+	if got["02:00:00:00:00:01"] != "PrinterHall" {
+		t.Fatalf("name = %q", got["02:00:00:00:00:01"])
+	}
+}

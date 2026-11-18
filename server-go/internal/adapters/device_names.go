@@ -3,11 +3,12 @@ package adapters
 import (
 	"context"
 	"strings"
+	"unicode"
 )
 
 // deviceNamesMax bounds the names listed; deviceNameMaxLen each one.
 const (
-	deviceNamesMax   = 4096
+	deviceNamesMax   = 16384 // fleet-wide; each reply carries one router's
 	deviceNameMaxLen = 63
 )
 
@@ -25,7 +26,14 @@ func (l *Live) DeviceNames() map[string]string {
 func deviceNamesOf(devices []Device) map[string]string {
 	out := map[string]string{}
 	for _, d := range devices {
-		name := strings.TrimSpace(d.Name)
+		// No control characters: a display name, and the reply's size is
+		// counted without JSON escapes.
+		name := strings.TrimSpace(strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return -1
+			}
+			return r
+		}, d.Name))
 		if name == "" || d.NameInferred || isMACLike(name) || strings.EqualFold(name, d.MAC) {
 			continue
 		}
