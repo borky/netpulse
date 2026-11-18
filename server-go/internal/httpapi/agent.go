@@ -349,7 +349,7 @@ func (s *server) handleIngestAgent(w http.ResponseWriter, r *http.Request) {
 	// where it has none (display only). Over TLS only, like the stations:
 	// the agent also takes them only from a pinned server.
 	if auth.IsSecureRequest(r) {
-		if names := s.deviceNamesForReply(); names != nil {
+		if names := s.deviceNamesForReply(&p); names != nil {
 			if reply == nil {
 				reply = map[string]any{}
 			}

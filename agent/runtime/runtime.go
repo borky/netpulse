@@ -498,20 +498,27 @@ func quarantineRadiusAllowed(opts Options) bool {
 // quarantine report) says nothing about it and is ignored; a panic in a
 // callback never reaches the push loop, nor stops the other callback.
 func handleIngestReply(opts Options, body []byte) {
-	var r probe.IngestReply
-	if len(body) == 0 || json.Unmarshal(body, &r) != nil {
+	// Each field is read on its own: a malformed one (a newer or buggy
+	// server) must not cost the other.
+	var raw struct {
+		Stations json.RawMessage `json:"stations"`
+		Names    json.RawMessage `json:"names"`
+	}
+	if len(body) == 0 || json.Unmarshal(body, &raw) != nil {
 		return
 	}
-	if r.Stations != nil && opts.OnQuarantineStations != nil {
+	var stations []probe.QuarantineStation
+	if len(raw.Stations) > 0 && opts.OnQuarantineStations != nil && json.Unmarshal(raw.Stations, &stations) == nil && stations != nil {
 		func() {
 			defer func() { _ = recover() }()
-			opts.OnQuarantineStations(r.Stations)
+			opts.OnQuarantineStations(stations)
 		}()
 	}
-	if r.Names != nil && opts.OnDeviceNames != nil {
+	var names map[string]string
+	if len(raw.Names) > 0 && opts.OnDeviceNames != nil && json.Unmarshal(raw.Names, &names) == nil && names != nil {
 		func() {
 			defer func() { _ = recover() }()
-			opts.OnDeviceNames(r.Names)
+			opts.OnDeviceNames(names)
 		}()
 	}
 }

@@ -5,8 +5,11 @@ import (
 	"strings"
 )
 
-// deviceNamesMax bounds what one reply carries.
-const deviceNamesMax = 4096
+// deviceNamesMax bounds the names listed; deviceNameMaxLen each one.
+const (
+	deviceNamesMax   = 4096
+	deviceNameMaxLen = 63
+)
 
 // DeviceNames lists the names this server knows for devices, by lowercase
 // MAC (a device's linked MACs included), for a router panel to show where
@@ -25,6 +28,11 @@ func deviceNamesOf(devices []Device) map[string]string {
 		name := strings.TrimSpace(d.Name)
 		if name == "" || d.NameInferred || isMACLike(name) || strings.EqualFold(name, d.MAC) {
 			continue
+		}
+		// A display name, bounded: the reply must stay well under what an
+		// agent reads (1 MiB), whatever a device calls itself.
+		if r := []rune(name); len(r) > deviceNameMaxLen {
+			name = strings.TrimSpace(string(r[:deviceNameMaxLen]))
 		}
 		for _, mac := range append([]string{d.MAC}, d.AliasMacs...) {
 			if len(out) >= deviceNamesMax {

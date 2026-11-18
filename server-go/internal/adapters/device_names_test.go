@@ -22,3 +22,14 @@ func TestDeviceNamesOfKeepsOnlyRealNames(t *testing.T) {
 		}
 	}
 }
+
+func TestDeviceNamesOfBoundsLength(t *testing.T) {
+	long := ""
+	for i := 0; i < 100; i++ {
+		long += "é"
+	}
+	got := deviceNamesOf([]Device{{MAC: "02:00:00:00:00:01", Name: long}})
+	if n := len([]rune(got["02:00:00:00:00:01"])); n != deviceNameMaxLen {
+		t.Fatalf("name kept %d runes", n)
+	}
+}

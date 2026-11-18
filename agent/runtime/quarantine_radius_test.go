@@ -75,3 +75,22 @@ func TestHandleIngestReplyNames(t *testing.T) {
 		t.Fatalf("names-only embedder: %v", names)
 	}
 }
+
+// A malformed names field does not cost the stations of the same reply,
+// nor the other way round.
+func TestHandleIngestReplyFieldsAreIndependent(t *testing.T) {
+	var stations, names int
+	opts := Options{
+		OnQuarantineStations: func([]probe.QuarantineStation) { stations++ },
+		OnDeviceNames:        func(map[string]string) { names++ },
+	}
+	handleIngestReply(opts, []byte(`{"stations":[{"mac":"02:00:00:00:00:01"}],"names":{"02:00:00:00:00:01":1}}`))
+	handleIngestReply(opts, []byte(`{"stations":[{"mac":"02:00:00:00:00:01"}],"names":"x"}`))
+	if stations != 2 || names != 0 {
+		t.Fatalf("bad names: stations %d names %d", stations, names)
+	}
+	handleIngestReply(opts, []byte(`{"stations":"x","names":{"02:00:00:00:00:01":"NAS"}}`))
+	if stations != 2 || names != 1 {
+		t.Fatalf("bad stations: stations %d names %d", stations, names)
+	}
+}
